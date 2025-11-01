@@ -1,2 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
-amazon_products.json
+env/
+ENV/
+
+# Browser data
+browser_data/
+
+# Results
+*.json
+!requirements.txt
+price_results.json
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

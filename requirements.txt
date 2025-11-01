@@ -1,3 +1,8 @@
 playwright
 flask
+flask-cors
 psutil
+undetected-chromedriver
+selenium
+setuptools
+python-dotenv
