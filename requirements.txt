@@ -6,3 +6,4 @@ undetected-chromedriver
 selenium
 setuptools
 python-dotenv
+psycopg2-binary

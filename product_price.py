@@ -24,6 +24,7 @@ class EcommerceScraper:
         # Define price selectors for different e-commerce sites
         self.site_selectors = {
             'amazon': [
+                'input[type="hidden"][name="items[0.base][customerVisiblePrice][amount]"]',  # Top priority: Hidden input with price value
                 '.a-price.priceToPay .a-offscreen',  # Main price in buybox (most reliable)
                 '.a-price.priceToPay .a-price-whole',  # Main price whole number
                 '.a-price.aok-align-center.priceToPay .a-offscreen',  # Buybox centered price
@@ -232,6 +233,22 @@ class EcommerceScraper:
                 
                 # Site-specific selectors
                 if site == 'amazon':
+                    # Top priority: Check hidden input field with price (most reliable)
+                    try:
+                        hidden_price_input = WebDriverWait(driver, 3).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="hidden"][name="items[0.base][customerVisiblePrice][amount]"]'))
+                        )
+                        price_value = hidden_price_input.get_attribute('value')
+                        if price_value:
+                            try:
+                                price_float = float(price_value)
+                                if 100 <= price_float <= 10000000:
+                                    return price_value
+                            except:
+                                pass
+                    except:
+                        pass
+                    
                     # Amazon-specific price selectors (prioritize buybox/main price)
                     amazon_selectors = [
                         ('.a-price.priceToPay .a-offscreen', 'main_price_offscreen'),
@@ -265,7 +282,7 @@ class EcommerceScraper:
                                     price_value = price_match.group(1).replace(',', '')
                                     try:
                                         price_float = float(price_value)
-                                        if 100 <= price_float <= 100000:
+                                        if 100 <= price_float <= 10000000:
                                             return price_value
                                     except:
                                         pass
@@ -284,7 +301,7 @@ class EcommerceScraper:
                                     price_value = price_match.group(1).replace(',', '')
                                     try:
                                         price_float = float(price_value)
-                                        if 100 <= price_float <= 100000:
+                                        if 100 <= price_float <= 10000000:
                                             return price_value
                                     except:
                                         pass
@@ -306,7 +323,7 @@ class EcommerceScraper:
                                             price_value = price_match.group(1).replace(',', '')
                                             try:
                                                 price_float = float(price_value)
-                                                if 100 <= price_float <= 100000:
+                                                if 100 <= price_float <= 10000000:
                                                     return price_value
                                             except:
                                                 pass
@@ -586,6 +603,21 @@ class EcommerceScraper:
             async def strategy1_site_selectors():
                 # Amazon-specific logic: prioritize buybox/main price
                 if site == 'amazon':
+                    # Top priority: Check hidden input field with price (most reliable)
+                    try:
+                        hidden_price_input = await page.query_selector('input[type="hidden"][name="items[0.base][customerVisiblePrice][amount]"]', timeout=2000)
+                        if hidden_price_input:
+                            price_value = await hidden_price_input.get_attribute('value')
+                            if price_value:
+                                try:
+                                    price_float = float(price_value)
+                                    if 100 <= price_float <= 10000000:
+                                        return price_value
+                                except:
+                                    pass
+                    except:
+                        pass
+                    
                     amazon_priority_selectors = [
                         '.a-price.priceToPay .a-offscreen',
                         '.a-price.priceToPay .a-price-whole',
@@ -604,7 +636,7 @@ class EcommerceScraper:
                                 if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 100000:
+                                        if 100 <= price_float <= 1000000000:
                                             return cleaned_price
                                     except:
                                         pass
@@ -651,7 +683,7 @@ class EcommerceScraper:
                                 if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 100000:
+                                        if 100 <= price_float <= 10000000:
                                             return cleaned_price
                                     except:
                                         pass
@@ -671,7 +703,7 @@ class EcommerceScraper:
                                 if site == 'amazon':
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 100000:
+                                        if 100 <= price_float <= 10000000:
                                             return cleaned_price
                                     except:
                                         continue
@@ -700,7 +732,7 @@ class EcommerceScraper:
                                     if site == 'amazon':
                                         try:
                                             price_float = float(cleaned_price.replace(',', ''))
-                                            if 100 <= price_float <= 100000:
+                                            if 100 <= price_float <= 10000000:
                                                 return cleaned_price
                                         except:
                                             continue
@@ -834,6 +866,7 @@ async def main():
     scraper = EcommerceScraper()
     
     test_urls = [
+        "https://www.amazon.in/Solitude-Soap-Dispenser-Dishwashing-2/dp/B0DVCCL9SY?th=1&linkCode=sl1&tag=appdeals04-21&linkId=19022195a19556b6ca2d8acacd073049&language=en_IN&ref_=as_li_ss_tl",
         "https://www.amazon.in/Apple-MacBook-16-inch-16%E2%80%91core-40%E2%80%91core/dp/B0CM5QYZ3R/?_encoding=UTF8&pd_rd_w=XxnCZ&content-id=amzn1.sym.fa294cf3-99e4-435e-8284-16ec3b3e2443%3Aamzn1.symc.752cde0b-d2ce-4cce-9121-769ea438869e&pf_rd_p=fa294cf3-99e4-435e-8284-16ec3b3e2443&pf_rd_r=QFVCTBSSJW1EMSA5Q749&pd_rd_wg=aNbQr&pd_rd_r=a76fc29b-5e69-4fc8-bab8-696b6fdfce91&ref_=pd_hp_d_atf_ci_mcx_mr_ca_hp_atf_d&th=1",  # Amazon 
         "https://www.flipkart.com/24-energy-large-battery-mosquito-bat-big-head-racquet-light-charging-wire-electric-insect-killer-indoor-outdoor/p/itm997a7e072213f?pid=EIKGJEVQUTZMGGZJ&lid=LSTEIKGJEVQUTZMGGZJDXHO4Y&marketplace=FLIPKART&store=rja%2Fplv%2Foej&srno=b_1_1&otracker=browse&fm=organic&iid=en_catibhIh2mq6LS_giqrkMGGJF8VJvCdRj2vhTbAbNpWj3lw5BTmKghdclcrzxHQURE4M-xn2S_POOoS3xv6fow%3D%3D&ppt=None&ppn=None&ssid=h5j3kjtjyo0000001761471120825",  # Flipkart 
         "https://www.shopsy.in/slippers/p/itmf166ce1205815?pid=XSSGTMTG7NATWGWV&lid=LSTXSSGTMTG7NATWGWVCIJZTN&marketplace=FLIPKART&sattr[]=color&sattr[]=size",  # Shopsy

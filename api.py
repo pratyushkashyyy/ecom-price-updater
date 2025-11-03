@@ -470,7 +470,7 @@ if __name__ == '__main__':
     # Production settings
     debug_mode = os.getenv('DEBUG', 'False').lower() == 'true'
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 9000))
+    port = int(os.getenv('PORT', 8000))
     
     print("=" * 70)
     print("E-commerce Price Scraper API - Production Ready")
