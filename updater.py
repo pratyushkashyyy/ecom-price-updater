@@ -2,6 +2,7 @@
 import psycopg2
 import os
 import requests
+import urllib.parse
 
 # Database connection
 DB_CONFIG = {
@@ -31,21 +32,42 @@ def update_product_price(id, price):
     """Update product price in products table by calling the API"""
     print(f"Updating product price for {id} with Price {price}")
     try:
-        response = requests.post('http://appdeals.in/api/update-product-price', json={'product_id': id, 'price': price})
+        response = requests.post('http://127.0.0.1:8000/api/update-product-price', json={'product_id': id, 'price': price})
         if response.status_code == 200:
             print(f"Successfully updated product price for {id}")
+            print(response.json())
         else:
             print(f"Failed to update product price for {id}")
             print(response.json())
     except Exception as e:
         print(f"Error: {e}")
         print(f"Failed to update product price for {id}")
-        print(response.json())
+
+def scraping_product_price(id, url):
+    """Scrape product price from URL"""
+    print(f"Scraping product price for {id} with URL {url}")
+    try:
+        encoded_url = urllib.parse.quote(url, safe='')
+        api_url = f"https://ecom-price.appdeals.in/api/price?url={encoded_url}"
+        response = requests.get(api_url)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('price')
+        else:
+            print(f"API returned status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+
 
 if __name__ == '__main__':
     urls = get_product_urls()
+    print(len(urls))
     for id, url in urls:
-        print(f"id: {id}, url: {url}")
-        print(len(urls))
-        
-        break
+        if id == 1955:
+            print(scraping_product_price(id, url))
+            update_product_price(id,10000)
+            print(f"id: {id}, url: {url}")
+            break
