@@ -52,7 +52,13 @@ def scraping_product_price(id, url):
         response = requests.get(api_url)
         if response.status_code == 200:
             data = response.json()
-            return data.get('price')
+            price_str = data.get('price')
+            if price_str:
+                # Remove commas and convert to float first (handles decimals), then to int
+                price_clean = str(price_str).replace(',', '').strip()
+                price = int(float(price_clean))
+                return price
+            return None
         else:
             print(f"API returned status code: {response.status_code}")
             return None
@@ -67,7 +73,11 @@ if __name__ == '__main__':
     print(len(urls))
     for id, url in urls:
         if id == 1955:
-            print(scraping_product_price(id, url))
-            update_product_price(id,10000)
-            print(f"id: {id}, url: {url}")
-            break
+            price = (scraping_product_price(id, url))
+            if price is not None:
+                update_product_price(id,price)
+                print(f"id: {id}, url: {url}")
+                break
+            else:
+                print(f"No price found for {id}")
+                break
