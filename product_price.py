@@ -163,13 +163,12 @@ class EcommerceScraper:
         
         return final_url, identified_site
     
-    def scrape_with_selenium(self, product_url: str, site: str = None, use_virtual_display: bool = True) -> str:
+    def scrape_with_selenium(self, product_url: str, site: str = None, use_virtual_display: bool = False) -> str:
         """
         Generic Selenium scraper for sites that block Playwright.
         New flow: Navigate → Capture final URL → Identify site → Extract price
-        Always uses virtual display (no headless mode)
         """
-        # Always setup virtual display (no headless mode)
+        # Setup virtual display if requested
         vdisplay = None
         if use_virtual_display:
             try:
@@ -177,9 +176,8 @@ class EcommerceScraper:
                 vdisplay = VirtualDisplay()
                 if not vdisplay.start():
                     vdisplay = None  # Fallback if virtual display fails
-                    print("⚠️  Virtual display failed to start, browser will be visible")
             except ImportError:
-                print("⚠️  virtual_display module not available, browser will be visible")
+                print("⚠️  virtual_display module not available, running without virtual display")
         
         # Try site-specific Selenium modules first (only if we know the site from initial URL)
         initial_site = self.identify_site(product_url) if site is None else site
@@ -240,14 +238,16 @@ class EcommerceScraper:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-blink-features=AutomationControlled')
             
-            # Always configure for virtual display (no headless mode)
-            if vdisplay:
+            if use_virtual_display and vdisplay:
+                # Configure for virtual display (no headless needed)
                 try:
                     from virtual_display import setup_virtual_display_for_selenium
                     setup_virtual_display_for_selenium(options)
                 except ImportError:
                     pass
-            # If virtual display not available, browser will run visibly (no headless)
+            else:
+                # Use headless mode if virtual display not available
+                options.add_argument('--headless=new')
             
             options.add_argument('--start-maximized')
             
@@ -664,8 +664,8 @@ class EcommerceScraper:
         
         return final_url, identified_site
     
-    async def scrape_product_price(self, playwright: Playwright, product_url: str, 
-                                   force_selenium: bool = False, use_virtual_display: bool = True) -> Dict:
+    async def scrape_product_price(self, playwright: Playwright, product_url: str, headless: bool = True, 
+                                   force_selenium: bool = False, use_virtual_display: bool = False) -> Dict:
         # NEW FLOW: Will identify site after navigation
         initial_site = self.identify_site(product_url)
         site = initial_site  # Will be updated after navigation
@@ -689,9 +689,11 @@ class EcommerceScraper:
         context = None
         
         try:
-            # Always use virtual display (no headless mode)
-            # Virtual display handles running the browser in the background
-            browser = await playwright.chromium.launch(headless=False)
+            # For virtual display, we don't use headless mode
+            # The virtual display handles the "headless" part
+            playwright_headless = headless if not use_virtual_display else False
+            
+            browser = await playwright.chromium.launch(headless=playwright_headless)
             context = await browser.new_context(
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
@@ -1015,12 +1017,13 @@ class EcommerceScraper:
                     pass
 
     async def scrape_multiple_products(self, playwright: Playwright, urls: List[str], 
-                                        max_concurrent: int = 20, use_virtual_display: bool = True) -> List[Dict]:
+                                        max_concurrent: int = 20, headless: bool = True, 
+                                        use_virtual_display: bool = False) -> List[Dict]:
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def scrape_with_limit(url):
             async with semaphore:
-                return await self.scrape_product_price(playwright, url, use_virtual_display=use_virtual_display)
+                return await self.scrape_product_price(playwright, url, headless=headless, use_virtual_display=use_virtual_display)
         
         tasks = [scrape_with_limit(url) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1059,7 +1062,7 @@ async def main():
                 playwright,
                 test_urls,
                 max_concurrent=5,  # Reduced for testing
-                use_virtual_display=True,  # Always use virtual display (no headless)
+                headless=True,
             )
         
         # Analyze results

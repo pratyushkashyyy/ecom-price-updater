@@ -77,7 +77,7 @@ async def scraping_product_price(id, url, client, semaphore):
             expanded_url = await expand_short_url(url, client)
             
             encoded_url = urllib.parse.quote(expanded_url, safe='')
-            api_url = f"http://127.0.0.1:9000/api/price?url={encoded_url}"
+            api_url = f"https://ecom-price.appdeals.in/api/price?url={encoded_url}"
             response = await client.get(api_url, timeout=30.0)
             if response.status_code == 200:
                 data = response.json()
