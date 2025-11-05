@@ -95,7 +95,10 @@ class EcommerceScraper:
         """Identify the e-commerce site from URL"""
         domain = urlparse(url).netloc.lower()
         
-        if 'amazon' in domain:
+        # Handle short URLs
+        if 'amzn.to' in domain or 'amzn' in domain:
+            return 'amazon'
+        elif 'amazon' in domain:
             return 'amazon'
         elif 'flipkart' in domain or 'shopsy' in domain:
             return 'flipkart'
@@ -136,12 +139,37 @@ class EcommerceScraper:
         
         return False
 
-    def scrape_with_selenium(self, product_url: str, site: str = None, use_virtual_display: bool = False) -> str:
-        """Generic Selenium scraper for sites that block Playwright"""
-        if site is None:
-            site = self.identify_site(product_url)
+    def navigate_and_identify(self, driver, product_url: str, initial_site: str = None) -> tuple:
+        """
+        Navigate to URL, wait for redirects, capture final URL, and identify site.
+        Returns: (final_url, identified_site)
+        """
+        print(f"  🌐 Navigating to: {product_url}")
+        driver.get(product_url)
+        time.sleep(random.uniform(3, 6))  # Wait for redirects and page load
         
-        # Setup virtual display if requested
+        # Capture final URL after navigation and redirects
+        final_url = driver.current_url
+        print(f"  📍 Final URL after navigation: {final_url[:100]}...")
+        
+        # Identify site from final URL
+        identified_site = self.identify_site(final_url)
+        
+        if initial_site:
+            if identified_site != initial_site and identified_site != 'generic':
+                print(f"  🔄 Site identified: {initial_site} -> {identified_site} (from final URL)")
+        else:
+            print(f"  🏷️  Site identified: {identified_site} (from final URL)")
+        
+        return final_url, identified_site
+    
+    def scrape_with_selenium(self, product_url: str, site: str = None, use_virtual_display: bool = True) -> str:
+        """
+        Generic Selenium scraper for sites that block Playwright.
+        New flow: Navigate → Capture final URL → Identify site → Extract price
+        Always uses virtual display (no headless mode)
+        """
+        # Always setup virtual display (no headless mode)
         vdisplay = None
         if use_virtual_display:
             try:
@@ -149,11 +177,13 @@ class EcommerceScraper:
                 vdisplay = VirtualDisplay()
                 if not vdisplay.start():
                     vdisplay = None  # Fallback if virtual display fails
+                    print("⚠️  Virtual display failed to start, browser will be visible")
             except ImportError:
-                print("⚠️  virtual_display module not available, running without virtual display")
+                print("⚠️  virtual_display module not available, browser will be visible")
         
-        # Try site-specific Selenium modules first
-        if site == 'nykaa':
+        # Try site-specific Selenium modules first (only if we know the site from initial URL)
+        initial_site = self.identify_site(product_url) if site is None else site
+        if initial_site == 'nykaa':
             try:
                 from nykaa_selenium import scrape_nykaa_with_selenium
                 price = scrape_nykaa_with_selenium(product_url)
@@ -210,29 +240,30 @@ class EcommerceScraper:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-blink-features=AutomationControlled')
             
-            if use_virtual_display and vdisplay:
-                # Configure for virtual display (no headless needed)
+            # Always configure for virtual display (no headless mode)
+            if vdisplay:
                 try:
                     from virtual_display import setup_virtual_display_for_selenium
                     setup_virtual_display_for_selenium(options)
                 except ImportError:
                     pass
-            else:
-                # Use headless mode if virtual display not available
-                options.add_argument('--headless=new')
+            # If virtual display not available, browser will run visibly (no headless)
             
             options.add_argument('--start-maximized')
             
             driver = uc.Chrome(options=options, version_main=None)
             
             try:
-                driver.get(product_url)
-                time.sleep(random.uniform(3, 6))
+                # NEW FLOW: Navigate → Capture final URL → Identify site → Extract price
+                final_url, identified_site = self.navigate_and_identify(driver, product_url, initial_site)
+                site = identified_site  # Use the identified site from final URL
                 
                 wait = WebDriverWait(driver, 15)
                 
-                # Site-specific selectors
+                # Site-specific selectors based on identified site
                 if site == 'amazon':
+                    print(f"\n🔍 [DEBUG] Starting Amazon price extraction for: {final_url}")
+                    
                     # Top priority: Check hidden input field with price (most reliable)
                     try:
                         hidden_price_input = WebDriverWait(driver, 3).until(
@@ -242,12 +273,43 @@ class EcommerceScraper:
                         if price_value:
                             try:
                                 price_float = float(price_value)
-                                if 100 <= price_float <= 10000000:
+                                print(f"  ✓ Found hidden input price: ₹{price_value}")
+                                # Require minimum 10 to avoid picking up non-price numbers, but allow low prices
+                                if 10 <= price_float <= 10000000:
+                                    # Special handling: if price is exactly 500, check for higher price (might be variant)
+                                    if price_float == 500:
+                                        print(f"    ⚠️  WARNING: Price is 500 - checking for higher main price...")
+                                        # Try to find a higher price in buybox
+                                        try:
+                                            buybox = driver.find_element(By.ID, 'buybox')
+                                            all_prices = buybox.find_elements(By.CSS_SELECTOR, '.a-price .a-offscreen, .a-price .a-price-whole')
+                                            higher_prices = []
+                                            for p_elem in all_prices:
+                                                try:
+                                                    p_text = p_elem.text.strip()
+                                                    if '₹' in p_text:
+                                                        p_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', p_text)
+                                                        if p_match:
+                                                            p_val = float(p_match.group(1).replace(',', ''))
+                                                            if 10 <= p_val <= 10000000 and p_val != 500 and p_val > 500:
+                                                                higher_prices.append((p_val, p_text))
+                                                except:
+                                                    continue
+                                            if higher_prices:
+                                                higher_prices.sort(key=lambda x: x[0], reverse=True)
+                                                main_price_val = str(int(higher_prices[0][0]))
+                                                print(f"    ✅ Found higher main price: ₹{main_price_val} (ignoring 500)")
+                                                return main_price_val
+                                        except:
+                                            pass
+                                    print(f"  ✅ Using hidden input price: ₹{price_value}")
                                     return price_value
+                                else:
+                                    print(f"  ⚠️  Hidden input price {price_value} failed validation (not in range 10-10000000)")
                             except:
                                 pass
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"  ℹ️  Hidden input not found: {str(e)[:50]}")
                     
                     # Amazon-specific price selectors (prioritize buybox/main price)
                     amazon_selectors = [
@@ -269,6 +331,7 @@ class EcommerceScraper:
                     priority_selectors = amazon_selectors[:5]  # Top 5 most reliable
                     fallback_selectors = amazon_selectors[5:]   # Others as fallback
                     
+                    print(f"  🔎 Checking {len(priority_selectors)} priority selectors...")
                     # Fast check for priority selectors (shorter timeout)
                     for selector, selector_name in priority_selectors:
                         try:
@@ -282,13 +345,60 @@ class EcommerceScraper:
                                     price_value = price_match.group(1).replace(',', '')
                                     try:
                                         price_float = float(price_value)
-                                        if 100 <= price_float <= 10000000:
+                                        print(f"  📍 Found via '{selector_name}': ₹{price_value} (text: '{text[:50]}')")
+                                        
+                                        # Additional validation: check if element is in buybox or price block
+                                        try:
+                                            parent = price_elem.find_element(By.XPATH, './ancestor::*[contains(@class, "buybox") or contains(@id, "price") or contains(@id, "buy")]')
+                                            if parent:
+                                                parent_class = parent.get_attribute('class') or ''
+                                                parent_id = parent.get_attribute('id') or ''
+                                                print(f"    Parent context: class='{parent_class[:50]}', id='{parent_id[:50]}'")
+                                        except:
+                                            pass
+                                        
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 10000000:
+                                            # Additional check: if price is exactly 500, it might be a variant/unit price
+                                            # Check if there's a higher price nearby (main price is usually higher)
+                                            if price_float == 500:
+                                                print(f"    ⚠️  WARNING: Price is 500 - might be variant/unit price, checking for main price...")
+                                                # Try to find a higher price in the buybox
+                                                try:
+                                                    buybox = driver.find_element(By.ID, 'buybox')
+                                                    all_prices = buybox.find_elements(By.CSS_SELECTOR, '.a-price .a-offscreen, .a-price .a-price-whole')
+                                                    higher_prices = []
+                                                    for p_elem in all_prices:
+                                                        try:
+                                                            p_text = p_elem.text.strip()
+                                                            if '₹' in p_text:
+                                                                p_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', p_text)
+                                                                if p_match:
+                                                                    p_val = float(p_match.group(1).replace(',', ''))
+                                                                    if 10 <= p_val <= 10000000 and p_val != 500 and p_val > 500:
+                                                                        higher_prices.append((p_val, p_text))
+                                                        except:
+                                                            continue
+                                                    if higher_prices:
+                                                        higher_prices.sort(key=lambda x: x[0], reverse=True)
+                                                        main_price_val = str(int(higher_prices[0][0]))
+                                                        print(f"    ✅ Found higher main price: ₹{main_price_val} (ignoring 500)")
+                                                        return main_price_val
+                                                    else:
+                                                        print(f"    ⚠️  No higher price found, but 500 might be incorrect")
+                                                except:
+                                                    pass
+                                            
+                                            print(f"    ✅ Using price from '{selector_name}': ₹{price_value}")
                                             return price_value
-                                    except:
-                                        pass
-                        except:
+                                        else:
+                                            print(f"    ❌ Price {price_value} failed validation (not in range 10-10000000)")
+                                    except Exception as e:
+                                        print(f"    ❌ Error validating price: {str(e)[:50]}")
+                        except Exception as e:
                             continue  # Fast fail, move to next
                     
+                    print(f"  🔎 Checking {len(fallback_selectors)} fallback selectors...")
                     # Check fallback selectors if priority ones didn't work
                     for selector, selector_name in fallback_selectors:
                         try:
@@ -301,8 +411,18 @@ class EcommerceScraper:
                                     price_value = price_match.group(1).replace(',', '')
                                     try:
                                         price_float = float(price_value)
-                                        if 100 <= price_float <= 10000000:
+                                        print(f"  📍 Found via '{selector_name}': ₹{price_value} (text: '{text[:50]}')")
+                                        
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 10000000:
+                                            # Skip 500 as it's likely a variant/unit price
+                                            if price_float == 500:
+                                                print(f"    ⚠️  Skipping 500 - likely variant/unit price, not main product price")
+                                                continue
+                                            print(f"    ✅ Using price from '{selector_name}': ₹{price_value}")
                                             return price_value
+                                        else:
+                                            print(f"    ❌ Price {price_value} failed validation")
                                     except:
                                         pass
                         except:
@@ -312,9 +432,11 @@ class EcommerceScraper:
                     try:
                         buybox = driver.find_element(By.ID, 'buybox')
                         if buybox:
+                            print(f"  🔎 Checking buybox for prices...")
                             # Use find_elements directly (no wait needed, element exists)
                             price_in_buybox = buybox.find_elements(By.CSS_SELECTOR, '.a-price.priceToPay .a-offscreen, .a-price.priceToPay .a-price-whole')
-                            for price_elem in price_in_buybox[:3]:  # Limit to first 3
+                            found_prices = []
+                            for price_elem in price_in_buybox[:5]:  # Check more elements
                                 try:
                                     text = price_elem.text.strip()
                                     if text and '₹' in text:
@@ -323,14 +445,28 @@ class EcommerceScraper:
                                             price_value = price_match.group(1).replace(',', '')
                                             try:
                                                 price_float = float(price_value)
-                                                if 100 <= price_float <= 10000000:
-                                                    return price_value
+                                                if 10 <= price_float <= 10000000:
+                                                    found_prices.append((price_float, price_value, text))
                                             except:
                                                 pass
                                 except:
                                     continue
-                    except:
-                        pass
+                            
+                            if found_prices:
+                                # Sort by price, highest first (main price is usually highest)
+                                found_prices.sort(key=lambda x: x[0], reverse=True)
+                                for price_float, price_value, text in found_prices:
+                                    print(f"  📍 Buybox price: ₹{price_value} (text: '{text[:50]}')")
+                                    # Skip 500 if there's a higher price
+                                    if price_float == 500 and len(found_prices) > 1:
+                                        print(f"    ⚠️  Skipping 500, using higher price instead")
+                                        continue
+                                    print(f"    ✅ Using buybox price: ₹{price_value}")
+                                    return price_value
+                    except Exception as e:
+                        print(f"  ℹ️  Buybox check failed: {str(e)[:50]}")
+                    
+                    print(f"  ❌ No valid price found for Amazon product")
                 elif site == 'nykaa':
                     # Try to find selling price (css-1jczs19)
                     try:
@@ -416,35 +552,39 @@ class EcommerceScraper:
                                         pass
                         except:
                             pass
+                    # For Amazon, all specific selectors have been tried above
+                    # Don't fall through to generic fallbacks to avoid picking up non-price numbers
                 
-                # Generic fallback: try any element with ₹
-                try:
-                    price_elem = wait.until(
-                        EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '₹')]"))
-                    )
-                    text = price_elem.text.strip()
-                    if text and '₹' in text and len(text) < 100:
-                        price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                # Generic fallback: try any element with ₹ (only for non-Amazon sites)
+                if site != 'amazon':
+                    try:
+                        price_elem = wait.until(
+                            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '₹')]"))
+                        )
+                        text = price_elem.text.strip()
+                        if text and '₹' in text and len(text) < 100:
+                            price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                            if price_match:
+                                price_value = price_match.group(1).replace(',', '')
+                                try:
+                                    if float(price_value) > 50:  # Reasonable threshold
+                                        return price_value
+                                except:
+                                    pass
+                    except:
+                        pass
+                    
+                    # Last resort: regex on page source (only for non-Amazon sites)
+                    if site != 'amazon':
+                        page_source = driver.page_source
+                        price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', page_source)
                         if price_match:
                             price_value = price_match.group(1).replace(',', '')
                             try:
-                                if float(price_value) > 50:  # Reasonable threshold
+                                if float(price_value) > 50:
                                     return price_value
                             except:
                                 pass
-                except:
-                    pass
-                
-                # Last resort: regex on page source
-                page_source = driver.page_source
-                price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', page_source)
-                if price_match:
-                    price_value = price_match.group(1).replace(',', '')
-                    try:
-                        if float(price_value) > 50:
-                            return price_value
-                    except:
-                        pass
                 
                 return 'N/A'
             finally:
@@ -500,9 +640,35 @@ class EcommerceScraper:
         
         return price_clean.strip()
 
-    async def scrape_product_price(self, playwright: Playwright, product_url: str, headless: bool = True, 
-                                   force_selenium: bool = False, use_virtual_display: bool = False) -> Dict:
-        site = self.identify_site(product_url)
+    async def navigate_and_identify_async(self, page, product_url: str, initial_site: str = None) -> tuple:
+        """
+        Navigate to URL, wait for redirects, capture final URL, and identify site (async for Playwright).
+        Returns: (final_url, identified_site)
+        """
+        print(f"  🌐 Navigating to: {product_url}")
+        await page.goto(product_url, timeout=30000, wait_until='domcontentloaded')
+        await asyncio.sleep(3 + random.uniform(1, 3))  # Wait for redirects and page load
+        
+        # Capture final URL after navigation and redirects
+        final_url = page.url
+        print(f"  📍 Final URL after navigation: {final_url[:100]}...")
+        
+        # Identify site from final URL
+        identified_site = self.identify_site(final_url)
+        
+        if initial_site:
+            if identified_site != initial_site and identified_site != 'generic':
+                print(f"  🔄 Site identified: {initial_site} -> {identified_site} (from final URL)")
+        else:
+            print(f"  🏷️  Site identified: {identified_site} (from final URL)")
+        
+        return final_url, identified_site
+    
+    async def scrape_product_price(self, playwright: Playwright, product_url: str, 
+                                   force_selenium: bool = False, use_virtual_display: bool = True) -> Dict:
+        # NEW FLOW: Will identify site after navigation
+        initial_site = self.identify_site(product_url)
+        site = initial_site  # Will be updated after navigation
         
         # If force_selenium is True or site is known to be blocked, use Selenium directly
         sites_known_blocked = ['nykaa', 'meesho', 'ajio', 'myntra']  # Sites known to block Playwright or need Selenium
@@ -523,11 +689,9 @@ class EcommerceScraper:
         context = None
         
         try:
-            # For virtual display, we don't use headless mode
-            # The virtual display handles the "headless" part
-            playwright_headless = headless if not use_virtual_display else False
-            
-            browser = await playwright.chromium.launch(headless=playwright_headless)
+            # Always use virtual display (no headless mode)
+            # Virtual display handles running the browser in the background
+            browser = await playwright.chromium.launch(headless=False)
             context = await browser.new_context(
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
@@ -549,29 +713,22 @@ class EcommerceScraper:
             )
             page = await context.new_page()
             
-            max_retries = 2
-            blocked = False
-            for attempt in range(max_retries):
-                try:
-                    await page.goto(product_url, timeout=30000, wait_until='domcontentloaded')
-                    await asyncio.sleep(3 + random.uniform(1, 3))
-                    
-                    # Check if page is blocked (common patterns)
-                    page_content = await page.content()
-                    page_title = await page.title()
-                    
-                    # Check for blocking indicators
-                    if any(indicator in page_content.lower() or indicator in page_title.lower() 
-                           for indicator in ['access denied', 'blocked', 'forbidden', 'cloudflare', 'captcha']):
-                        blocked = True
-                        break
-                    
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        # If Playwright fails, mark as blocked
-                        blocked = True
-                    await asyncio.sleep(2 + random.uniform(0.5, 1.5))
+            # NEW FLOW: Navigate → Capture final URL → Identify site → Extract price
+            try:
+                final_url, identified_site = await self.navigate_and_identify_async(page, product_url, initial_site)
+                site = identified_site  # Use the identified site from final URL
+                
+                # Check if page is blocked (common patterns)
+                page_content = await page.content()
+                page_title = await page.title()
+                
+                # Check for blocking indicators
+                blocked = any(indicator in page_content.lower() or indicator in page_title.lower() 
+                             for indicator in ['access denied', 'blocked', 'forbidden', 'cloudflare', 'captcha'])
+            except Exception as e:
+                # If navigation fails, mark as blocked
+                blocked = True
+                print(f"  ⚠️  Navigation failed: {str(e)[:100]}")
             
             if blocked:
                 # Fallback to Selenium
@@ -611,7 +768,8 @@ class EcommerceScraper:
                             if price_value:
                                 try:
                                     price_float = float(price_value)
-                                    if 100 <= price_float <= 10000000:
+                                    # Require minimum 10 to avoid picking up non-price numbers
+                                    if 10 <= price_float <= 10000000:
                                         return price_value
                                 except:
                                     pass
@@ -636,7 +794,8 @@ class EcommerceScraper:
                                 if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 1000000000:
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 1000000000:
                                             return cleaned_price
                                     except:
                                         pass
@@ -653,7 +812,8 @@ class EcommerceScraper:
                                 if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 100000:
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 100000:
                                             return cleaned_price
                                     except:
                                         pass
@@ -683,7 +843,8 @@ class EcommerceScraper:
                                 if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 10000000:
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 10000000:
                                             return cleaned_price
                                     except:
                                         pass
@@ -703,7 +864,8 @@ class EcommerceScraper:
                                 if site == 'amazon':
                                     try:
                                         price_float = float(cleaned_price.replace(',', ''))
-                                        if 100 <= price_float <= 10000000:
+                                        # Require minimum 10 to avoid picking up non-price numbers
+                                        if 10 <= price_float <= 10000000:
                                             return cleaned_price
                                     except:
                                         continue
@@ -716,8 +878,14 @@ class EcommerceScraper:
             
             async def strategy2_pattern_matching():
                 try:
-                    # Only check elements with price-related classes/ids (much faster)
-                    price_related = await page.query_selector_all('[class*="price"], [id*="price"], [class*="Price"], [id*="Price"]')
+                    # For Amazon, only use specific price class selectors to avoid false positives
+                    if site == 'amazon':
+                        # Only check Amazon-specific price classes
+                        price_related = await page.query_selector_all('.a-price, .a-price-whole, .a-price-symbol, .a-offscreen, #priceblock_ourprice, #priceblock_dealprice, #tp_price_block_total_price_ww')
+                    else:
+                        # For other sites, check elements with price-related classes/ids
+                        price_related = await page.query_selector_all('[class*="price"], [id*="price"], [class*="Price"], [id*="Price"]')
+                    
                     # Limit to first 100 elements for speed
                     elements_to_check = price_related[:100] if len(price_related) > 100 else price_related
                     
@@ -732,8 +900,18 @@ class EcommerceScraper:
                                     if site == 'amazon':
                                         try:
                                             price_float = float(cleaned_price.replace(',', ''))
-                                            if 100 <= price_float <= 10000000:
-                                                return cleaned_price
+                                            # For Amazon, require minimum 10 to avoid picking up non-price numbers
+                                            if 10 <= price_float <= 10000000:
+                                                # Additional check: ensure it's in a proper price container
+                                                parent = await element.query_selector('xpath=..')
+                                                if parent:
+                                                    parent_class = await parent.get_attribute('class') or ''
+                                                    if 'a-price' in parent_class or 'priceToPay' in parent_class:
+                                                        return cleaned_price
+                                                # If element itself has price class, it's valid
+                                                elem_class = await element.get_attribute('class') or ''
+                                                if 'a-price' in elem_class or 'priceToPay' in elem_class:
+                                                    return cleaned_price
                                         except:
                                             continue
                                     return cleaned_price
@@ -837,13 +1015,12 @@ class EcommerceScraper:
                     pass
 
     async def scrape_multiple_products(self, playwright: Playwright, urls: List[str], 
-                                        max_concurrent: int = 20, headless: bool = True, 
-                                        use_virtual_display: bool = False) -> List[Dict]:
+                                        max_concurrent: int = 20, use_virtual_display: bool = True) -> List[Dict]:
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def scrape_with_limit(url):
             async with semaphore:
-                return await self.scrape_product_price(playwright, url, headless=headless, use_virtual_display=use_virtual_display)
+                return await self.scrape_product_price(playwright, url, use_virtual_display=use_virtual_display)
         
         tasks = [scrape_with_limit(url) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -866,17 +1043,12 @@ async def main():
     scraper = EcommerceScraper()
     
     test_urls = [
-        "https://www.amazon.in/Solitude-Soap-Dispenser-Dishwashing-2/dp/B0DVCCL9SY?th=1&linkCode=sl1&tag=appdeals04-21&linkId=19022195a19556b6ca2d8acacd073049&language=en_IN&ref_=as_li_ss_tl",
-        "https://www.amazon.in/Apple-MacBook-16-inch-16%E2%80%91core-40%E2%80%91core/dp/B0CM5QYZ3R/?_encoding=UTF8&pd_rd_w=XxnCZ&content-id=amzn1.sym.fa294cf3-99e4-435e-8284-16ec3b3e2443%3Aamzn1.symc.752cde0b-d2ce-4cce-9121-769ea438869e&pf_rd_p=fa294cf3-99e4-435e-8284-16ec3b3e2443&pf_rd_r=QFVCTBSSJW1EMSA5Q749&pd_rd_wg=aNbQr&pd_rd_r=a76fc29b-5e69-4fc8-bab8-696b6fdfce91&ref_=pd_hp_d_atf_ci_mcx_mr_ca_hp_atf_d&th=1",  # Amazon 
-        "https://www.flipkart.com/24-energy-large-battery-mosquito-bat-big-head-racquet-light-charging-wire-electric-insect-killer-indoor-outdoor/p/itm997a7e072213f?pid=EIKGJEVQUTZMGGZJ&lid=LSTEIKGJEVQUTZMGGZJDXHO4Y&marketplace=FLIPKART&store=rja%2Fplv%2Foej&srno=b_1_1&otracker=browse&fm=organic&iid=en_catibhIh2mq6LS_giqrkMGGJF8VJvCdRj2vhTbAbNpWj3lw5BTmKghdclcrzxHQURE4M-xn2S_POOoS3xv6fow%3D%3D&ppt=None&ppn=None&ssid=h5j3kjtjyo0000001761471120825",  # Flipkart 
-        "https://www.shopsy.in/slippers/p/itmf166ce1205815?pid=XSSGTMTG7NATWGWV&lid=LSTXSSGTMTG7NATWGWVCIJZTN&marketplace=FLIPKART&sattr[]=color&sattr[]=size",  # Shopsy
-        "https://www.myntra.com/sports-shoes/hrx+by+hrithik+roshan/hrx-by-hrithik-roshan-unisex-mesh-running--shoes/32093860/buy",  # Myntra
-        "https://www.nykaa.com/braun-silk-epil-9-890-epilator-for-long-lasting-hair-removal-includes-a-bikini-styler/p/1178844?productId=1178844&pps=1",  # Nykaa
-        "https://www.snapdeal.com/product/mustmom-bright-ethnic-pure-cotton/662689652480",  # Snapdeal
-        "https://www.ajio.com/yousta-men-washed-relaxed-fit-crew-neck-t-shirt/p/443079993_blackcharcoal?",  # Ajio
-        "https://www.meesho.com/frekman-stylish-cotton-blend-check-mens-shirt/p/1kv4b",  # Meesho
-        "https://www.shopclues.com/hit-square-polyster-gym-sports-hood-cotton-blend-tshirt-for-men-relax-153546672.html"  # ShopClues
-    ]
+        "https://amzn.to/4ndbEWK",
+        "https://amzn.to/46arnjh,",
+        "https://amzn.to/42BrIsV",
+        "https://amzn.to/41W66Hw",
+        "https://amzn.to/4nzvWcC",
+          ]
     
     print("Testing E-commerce Price Scraper - Detecting Blocked Sites")
     print("=" * 70)
@@ -887,7 +1059,7 @@ async def main():
                 playwright,
                 test_urls,
                 max_concurrent=5,  # Reduced for testing
-                headless=True,
+                use_virtual_display=True,  # Always use virtual display (no headless)
             )
         
         # Analyze results

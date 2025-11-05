@@ -7,3 +7,4 @@ selenium
 setuptools
 python-dotenv
 psycopg2-binary
+httpx
