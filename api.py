@@ -65,14 +65,14 @@ def calculate_backoff_delay(attempt: int) -> float:
 
 
 async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES, 
-                               use_virtual_display: bool = False) -> dict:
+                               use_virtual_display: bool = True) -> dict:
     """
     Scrape price with retry logic until successful or max retries reached
     
     Args:
         product_url: Product URL to scrape
         max_retries: Maximum number of retry attempts
-        use_virtual_display: Use virtual display instead of headless
+        use_virtual_display: Use virtual display (default: True, no headless mode)
         
     Returns:
         Dictionary with scraping result
@@ -88,7 +88,6 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                     return await scraper.scrape_product_price(
                         playwright,
                         product_url,
-                        headless=True,
                         use_virtual_display=use_virtual_display
                     )
             
@@ -201,11 +200,11 @@ def get_price():
         if request.method == 'POST':
             data = request.get_json() or {}
             product_url = data.get('url', '').strip()
-            use_virtual_display = data.get('use_virtual_display', False)
+            use_virtual_display = data.get('use_virtual_display', True)
             max_retries = int(data.get('max_retries', MAX_RETRIES))
         else:  # GET
             product_url = request.args.get('url', '').strip()
-            use_virtual_display = request.args.get('use_virtual_display', 'false').lower() == 'true'
+            use_virtual_display = request.args.get('use_virtual_display', 'true').lower() == 'true'
             max_retries = int(request.args.get('max_retries', MAX_RETRIES))
         
         # Validate URL
@@ -296,7 +295,7 @@ def get_prices_batch():
     
     POST: {
         "urls": ["url1", "url2", ...], 
-        "use_virtual_display": false,
+        "use_virtual_display": true,
         "max_retries": 5,
         "max_concurrent": 10
     }
@@ -327,7 +326,7 @@ def get_prices_batch():
     try:
         data = request.get_json() or {}
         urls = data.get('urls', [])
-        use_virtual_display = data.get('use_virtual_display', False)
+        use_virtual_display = data.get('use_virtual_display', True)
         max_retries = int(data.get('max_retries', MAX_RETRIES))
         max_concurrent = int(data.get('max_concurrent', DEFAULT_MAX_CONCURRENT))
         

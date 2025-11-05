@@ -77,7 +77,7 @@ async def scraping_product_price(id, url, client, semaphore):
             expanded_url = await expand_short_url(url, client)
             
             encoded_url = urllib.parse.quote(expanded_url, safe='')
-            api_url = f"https://ecom-price.appdeals.in/api/price?url={encoded_url}"
+            api_url = f"http://127.0.0.1:9000/api/price?url={encoded_url}"
             response = await client.get(api_url, timeout=30.0)
             if response.status_code == 200:
                 data = response.json()
@@ -102,11 +102,11 @@ async def scraping_product_price(id, url, client, semaphore):
                         print(f"⚠️  Suspicious price 500 for Amazon URL {id} - likely scraping failure")
                         return None
                     
-                    # Additional validation: Amazon prices should typically be >= 100 (minimum validation from scraper)
-                    if price < 100 and ('amzn.to' in url.lower() or 'amazon' in url.lower()):
+                    # Additional validation: Amazon prices should typically be >= 10 (minimum validation from scraper)
+                    if price < 10 and ('amzn.to' in url.lower() or 'amazon' in url.lower()):
                         print(f"⚠️  Price {price} seems too low for Amazon product {id}")
                         # Return None for very low prices, but allow it if it's a real small item
-                        # You can adjust this threshold based on your needs
+                        # Minimum price threshold is 10
                     
                     return price
                 except (ValueError, TypeError) as e:
@@ -132,7 +132,7 @@ def get_last_processed_id(csv_file):
             next(reader, None)
             last_id = None
             for row in reader:
-                if row and row[0]:  # Check if row has at least one element and id is not empty
+                if row and row[0]:
                     try:
                         last_id = int(row[0])
                     except ValueError:
