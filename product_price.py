@@ -226,10 +226,34 @@ class EcommerceScraper:
         elif site == 'myntra':
             try:
                 from myntra_selenium import scrape_myntra_with_selenium
-                price = scrape_myntra_with_selenium(product_url)
-                if vdisplay:
-                    vdisplay.stop()
-                return price if price else 'N/A'
+                from urllib3.exceptions import ProtocolError
+                from http.client import RemoteDisconnected
+                
+                # Retry logic for connection errors
+                max_retries = 3
+                last_error = None
+                for attempt in range(max_retries):
+                    try:
+                        price = scrape_myntra_with_selenium(product_url, max_retries=1)  # Let function handle its own retries
+                        if vdisplay:
+                            vdisplay.stop()
+                        return price if price else 'N/A'
+                    except (ProtocolError, RemoteDisconnected, ConnectionError, OSError) as e:
+                        last_error = e
+                        if attempt < max_retries - 1:
+                            import time
+                            import random
+                            wait_time = random.uniform(2, 5) * (attempt + 1)
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            if vdisplay:
+                                vdisplay.stop()
+                            return 'N/A'
+                    except Exception as e:
+                        if vdisplay:
+                            vdisplay.stop()
+                        return 'N/A'
             except ImportError:
                 pass
         
