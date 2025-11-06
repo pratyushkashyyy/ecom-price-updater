@@ -95,22 +95,22 @@ class EcommerceScraper:
         """Identify the e-commerce site from URL"""
         domain = urlparse(url).netloc.lower()
         
-        # Handle short URLs
+        # Handle short URLs and redirect domains
         if 'amzn.to' in domain or 'amzn' in domain:
             return 'amazon'
         elif 'amazon' in domain:
             return 'amazon'
-        elif 'flipkart' in domain or 'shopsy' in domain:
+        elif 'flipkart' in domain or 'shopsy' in domain or 'fkrt.cc' in domain:
             return 'flipkart'
-        elif 'myntra' in domain:
+        elif 'myntra' in domain or 'myntr.it' in domain:
             return 'myntra'
         elif 'nykaa' in domain:
             return 'nykaa'
         elif 'snapdeal' in domain:
             return 'snapdeal'
-        elif 'ajio' in domain:
+        elif 'ajio' in domain or 'ajiio.in' in domain:
             return 'ajio'
-        elif 'meesho' in domain:
+        elif 'meesho' in domain or 'msho.in' in domain:
             return 'meesho'
         elif 'shopclues' in domain:
             return 'shopclues'
@@ -146,10 +146,17 @@ class EcommerceScraper:
         """
         print(f"  🌐 Navigating to: {product_url}")
         driver.get(product_url)
-        time.sleep(random.uniform(3, 6))  # Wait for redirects and page load
+        
+        # For short URLs, wait longer for redirects to complete
+        is_short_url = any(domain in product_url.lower() for domain in ['myntr.it', 'fkrt.cc', 'amzn.to', 'msho.in', 'ajiio.in'])
+        wait_time = random.uniform(5, 8) if is_short_url else random.uniform(3, 6)
+        time.sleep(wait_time)
         
         # Capture final URL after navigation and redirects
         final_url = driver.current_url
+        if final_url != product_url:
+            print(f"  🔄 Redirect detected: {product_url[:50]}... -> {final_url[:100]}...")
+        
         print(f"  📍 Final URL after navigation: {final_url[:100]}...")
         
         # Identify site from final URL
@@ -483,22 +490,78 @@ class EcommerceScraper:
                         pass
                 elif site == 'meesho':
                     # Try h4 element with price (most reliable for Meesho)
+                    # Meesho typically shows main price in h4 element with class 'sc-dOfePm haKcEH'
                     try:
-                        price_elem = wait.until(
-                            EC.presence_of_element_located((By.XPATH, "//h4[contains(text(), '₹')]"))
-                        )
-                        text = price_elem.text.strip()
-                        if text and '₹' in text:
-                            price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
-                            if price_match:
-                                price_value = price_match.group(1).replace(',', '')
+                        # First try to find h4 with the specific class that contains main price
+                        try:
+                            price_elem = wait.until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "h4.sc-dOfePm.haKcEH"))
+                            )
+                            text = price_elem.text.strip()
+                            if text and '₹' in text:
+                                price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                                if price_match:
+                                    price_value = price_match.group(1).replace(',', '')
+                                    try:
+                                        if float(price_value) > 50:
+                                            return price_value
+                                    except:
+                                        pass
+                        except:
+                            # Fallback: try any h4 element with price
+                            h4_elements = wait.until(
+                                EC.presence_of_all_elements_located((By.XPATH, "//h4[contains(text(), '₹')]"))
+                            )
+                            
+                            # Find the main product price (first valid one)
+                            for price_elem in h4_elements:
                                 try:
-                                    if float(price_value) > 50:
-                                        return price_value
+                                    text = price_elem.text.strip()
+                                    if text and '₹' in text and len(text) < 50:  # Main price is usually short
+                                        price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                                        if price_match:
+                                            price_value = price_match.group(1).replace(',', '')
+                                            try:
+                                                price_float = float(price_value)
+                                                # Main product price is usually reasonable (50-100000)
+                                                if 50 <= price_float <= 100000:
+                                                    return price_value
+                                            except:
+                                                continue
                                 except:
-                                    pass
-                    except:
-                        pass
+                                    continue
+                            
+                            # If no valid price found in loop, try first element
+                            if h4_elements:
+                                text = h4_elements[0].text.strip()
+                                if text and '₹' in text:
+                                    price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                                    if price_match:
+                                        price_value = price_match.group(1).replace(',', '')
+                                        try:
+                                            if float(price_value) > 50:
+                                                return price_value
+                                        except:
+                                            pass
+                    except Exception as e:
+                        # If h4 fails, try alternative selectors
+                        try:
+                            # Try span elements with price
+                            price_elem = wait.until(
+                                EC.presence_of_element_located((By.XPATH, "//span[contains(text(), '₹')]"))
+                            )
+                            text = price_elem.text.strip()
+                            if text and '₹' in text and len(text) < 50:
+                                price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                                if price_match:
+                                    price_value = price_match.group(1).replace(',', '')
+                                    try:
+                                        if float(price_value) > 50:
+                                            return price_value
+                                    except:
+                                        pass
+                        except:
+                            pass
                 elif site == 'ajio':
                     # Try to find selling price (.prod-sp)
                     try:
@@ -646,11 +709,47 @@ class EcommerceScraper:
         Returns: (final_url, identified_site)
         """
         print(f"  🌐 Navigating to: {product_url}")
-        await page.goto(product_url, timeout=30000, wait_until='domcontentloaded')
-        await asyncio.sleep(3 + random.uniform(1, 3))  # Wait for redirects and page load
         
-        # Capture final URL after navigation and redirects
+        # For short URLs, wait for networkidle to ensure redirects complete
+        # For regular URLs, use domcontentloaded for faster loading
+        is_short_url = any(domain in product_url.lower() for domain in ['myntr.it', 'fkrt.cc', 'amzn.to', 'msho.in', 'ajiio.in'])
+        is_amazon_short = 'amzn.to' in product_url.lower()
+        
+        # Amazon short URLs can be slow, use shorter timeout and fallback faster
+        if is_amazon_short:
+            # Try networkidle with shorter timeout for Amazon short URLs
+            try:
+                await page.goto(product_url, timeout=30000, wait_until='networkidle')
+            except Exception as e:
+                # If networkidle times out quickly, fallback to domcontentloaded
+                print(f"  ⚠️  Networkidle timeout for Amazon short URL, trying domcontentloaded: {str(e)[:100]}")
+                try:
+                    await page.goto(product_url, timeout=60000, wait_until='domcontentloaded')
+                except Exception as e2:
+                    # If that also fails, try load state
+                    print(f"  ⚠️  Domcontentloaded also failed, trying load: {str(e2)[:100]}")
+                    await page.goto(product_url, timeout=60000, wait_until='load')
+        elif is_short_url:
+            # For other short URLs, try networkidle with longer timeout
+            try:
+                await page.goto(product_url, timeout=60000, wait_until='networkidle')
+            except Exception as e:
+                # If networkidle times out, try with domcontentloaded
+                print(f"  ⚠️  Networkidle timeout, trying domcontentloaded: {str(e)[:100]}")
+                await page.goto(product_url, timeout=60000, wait_until='domcontentloaded')
+        else:
+            # Regular URLs use domcontentloaded
+            await page.goto(product_url, timeout=60000, wait_until='domcontentloaded')
+        
+        # Wait for redirects and page load (longer wait for short URLs)
+        wait_time = 5 + random.uniform(2, 4) if is_short_url else 3 + random.uniform(1, 3)
+        await asyncio.sleep(wait_time)
+        
+        # Check if URL changed (redirect happened)
         final_url = page.url
+        if final_url != product_url:
+            print(f"  🔄 Redirect detected: {product_url[:50]}... -> {final_url[:100]}...")
+        
         print(f"  📍 Final URL after navigation: {final_url[:100]}...")
         
         # Identify site from final URL
@@ -1046,11 +1145,7 @@ async def main():
     scraper = EcommerceScraper()
     
     test_urls = [
-        "https://amzn.to/4ndbEWK",
-        "https://amzn.to/46arnjh,",
-        "https://amzn.to/42BrIsV",
-        "https://amzn.to/41W66Hw",
-        "https://amzn.to/4nzvWcC",
+        "https://myntr.it/uZ7356d"
           ]
     
     print("Testing E-commerce Price Scraper - Detecting Blocked Sites")

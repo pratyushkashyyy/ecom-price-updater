@@ -12,6 +12,7 @@ import logging
 import time
 import random
 import os
+import threading
 from datetime import datetime
 from dotenv import load_dotenv
 from scrape_prices import scrape_price
@@ -45,15 +46,60 @@ TIMEOUT_SECONDS = int(os.getenv('TIMEOUT_SECONDS', 60))  # Timeout per request (
 DEFAULT_MAX_CONCURRENT = int(os.getenv('DEFAULT_MAX_CONCURRENT', 10))  # Default concurrent requests
 MAX_MAX_CONCURRENT = int(os.getenv('MAX_MAX_CONCURRENT', 20))  # Maximum allowed concurrent requests
 
+# Global semaphore to limit concurrent Playwright instances across all requests
+# This prevents resource exhaustion from too many open file descriptors
+# Use threading.Semaphore since Flask is threaded and event loops may differ
+MAX_PLAYWRIGHT_INSTANCES = int(os.getenv('MAX_PLAYWRIGHT_INSTANCES', 10))
+playwright_semaphore = threading.Semaphore(MAX_PLAYWRIGHT_INSTANCES)
+
 
 def run_async(coro):
-    """Helper function to run async code in Flask"""
+    """Helper function to run async code in Flask with proper resource cleanup"""
+    loop = None
+    is_new_loop = False
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                raise RuntimeError("Event loop is closed")
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            is_new_loop = True
+        
+        result = loop.run_until_complete(coro)
+        return result
+    finally:
+        # Only clean up if we created a new loop
+        # Don't interfere with existing loops that might be reused
+        if is_new_loop and loop and not loop.is_closed():
+            try:
+                # Give a small grace period for cleanup
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                if pending:
+                    # Wait briefly for tasks to complete naturally
+                    try:
+                        loop.run_until_complete(asyncio.wait_for(
+                            asyncio.gather(*pending, return_exceptions=True),
+                            timeout=0.1
+                        ))
+                    except asyncio.TimeoutError:
+                        # If tasks don't complete quickly, cancel them
+                        for task in pending:
+                            if not task.done():
+                                task.cancel()
+                        # Wait for cancellation to complete
+                        if pending:
+                            loop.run_until_complete(
+                                asyncio.gather(*pending, return_exceptions=True)
+                            )
+            except Exception as e:
+                logger.debug(f"Error cleaning up event loop: {e}")
+            finally:
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
 
 def calculate_backoff_delay(attempt: int) -> float:
@@ -83,14 +129,27 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
         try:
             logger.info(f"Attempt {attempt + 1}/{max_retries} for URL: {product_url[:80]}...")
             
+            # Ensure Playwright context is properly managed with explicit cleanup
+            # Use async with to guarantee cleanup even on exceptions
+            # Use semaphore to limit concurrent Playwright instances
             async def scrape():
-                async with async_playwright() as playwright:
-                    return await scraper.scrape_product_price(
-                        playwright,
-                        product_url,
-                        headless=True,
-                        use_virtual_display=use_virtual_display
-                    )
+                # Use threading semaphore to limit concurrent Playwright instances
+                # This prevents resource exhaustion from too many open file descriptors
+                playwright_semaphore.acquire()
+                try:
+                    async with async_playwright() as playwright:
+                        return await scraper.scrape_product_price(
+                            playwright,
+                            product_url,
+                            headless=True,
+                            use_virtual_display=use_virtual_display
+                        )
+                except Exception as e:
+                    # Log but don't suppress - let it propagate for retry logic
+                    logger.warning(f"Playwright error in scrape: {e}")
+                    raise
+                finally:
+                    playwright_semaphore.release()
             
             result = await scrape()
             
