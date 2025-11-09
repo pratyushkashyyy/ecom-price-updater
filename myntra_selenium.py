@@ -8,6 +8,22 @@ from selenium.webdriver.support import expected_conditions as EC
 from urllib3.exceptions import ProtocolError
 from http.client import RemoteDisconnected
 
+# Import cleanup utilities
+try:
+    from chrome_cleanup import cleanup_chrome_driver
+except ImportError:
+    # Fallback if chrome_cleanup is not available
+    def cleanup_chrome_driver(driver, timeout=5):
+        try:
+            if driver:
+                driver.quit()
+        except:
+            try:
+                if driver:
+                    driver.close()
+            except:
+                pass
+
 
 def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
     """Scrape Myntra using undetected Chrome driver to bypass bot detection"""
@@ -22,11 +38,9 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
             # Use undetected chromedriver with realistic options
             options = uc.ChromeOptions()
             
-            # Add some arguments to make it more realistic
+            # Basic options needed for virtual display
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--start-maximized')
             
             # Add delay between retries to avoid overwhelming the system
             if attempt > 0:
@@ -55,7 +69,8 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
             
             try:
                 title = driver.title
-                wait = WebDriverWait(driver, 15)
+                # Reduce wait timeout to prevent hanging - use shorter waits
+                wait = WebDriverWait(driver, 10)  # Reduced from 15 to 10 seconds
                 
                 print(f"Page title: {title}")
                 
@@ -115,40 +130,64 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
                 # Priority 1: Try to find discounted price or regular price
                 print("\n=== Trying specific selectors ===")
                 # Try pdp-discounted-price first (discounted price)
+                # Try to find element without waiting first (faster)
                 try:
-                    price_elem = wait.until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".pdp-discounted-price"))
-                    )
-                    text = price_elem.text.strip()
-                    if text and '₹' in text:
-                        price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
-                        if price_match:
-                            price_value = price_match.group(1).replace(',', '')
-                            print(f"✓ Found discounted price using .pdp-discounted-price selector")
-                            print(f"  Tag: {price_elem.tag_name}")
-                            print(f"  Class: {price_elem.get_attribute('class')}")
-                            print(f"  Text: {text}")
-                            print(f"  Extracted: ₹{price_value}")
-                            return price_value
+                    price_elems = driver.find_elements(By.CSS_SELECTOR, ".pdp-discounted-price")
+                    if not price_elems:
+                        # Only wait if element not found immediately
+                        try:
+                            price_elem = wait.until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".pdp-discounted-price"))
+                            )
+                            price_elems = [price_elem]
+                        except:
+                            price_elems = []
+                    
+                    if price_elems:
+                        price_elem = price_elems[0]
+                        text = price_elem.text.strip()
+                        if text and '₹' in text:
+                            price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                            if price_match:
+                                price_value = price_match.group(1).replace(',', '')
+                                print(f"✓ Found discounted price using .pdp-discounted-price selector")
+                                print(f"  Tag: {price_elem.tag_name}")
+                                print(f"  Class: {price_elem.get_attribute('class')}")
+                                print(f"  Text: {text}")
+                                print(f"  Extracted: ₹{price_value}")
+                                cleanup_chrome_driver(driver)
+                                return price_value
                 except Exception as e:
                     print(f"Trying .pdp-discounted-price selector failed: {e}")
                 
                 # Try pdp-price (regular price)
+                # Try to find element without waiting first (faster)
                 try:
-                    price_elem = wait.until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".pdp-price"))
-                    )
-                    text = price_elem.text.strip()
-                    if text and '₹' in text:
-                        price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
-                        if price_match:
-                            price_value = price_match.group(1).replace(',', '')
-                            print(f"✓ Found price using .pdp-price selector")
-                            print(f"  Tag: {price_elem.tag_name}")
-                            print(f"  Class: {price_elem.get_attribute('class')}")
-                            print(f"  Text: {text}")
-                            print(f"  Extracted: ₹{price_value}")
-                            return price_value
+                    price_elems = driver.find_elements(By.CSS_SELECTOR, ".pdp-price")
+                    if not price_elems:
+                        # Only wait if element not found immediately
+                        try:
+                            price_elem = wait.until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".pdp-price"))
+                            )
+                            price_elems = [price_elem]
+                        except:
+                            price_elems = []
+                    
+                    if price_elems:
+                        price_elem = price_elems[0]
+                        text = price_elem.text.strip()
+                        if text and '₹' in text:
+                            price_match = re.search(r'₹\s*([\d,]+(?:\.\d{1,2})?)', text)
+                            if price_match:
+                                price_value = price_match.group(1).replace(',', '')
+                                print(f"✓ Found price using .pdp-price selector")
+                                print(f"  Tag: {price_elem.tag_name}")
+                                print(f"  Class: {price_elem.get_attribute('class')}")
+                                print(f"  Text: {text}")
+                                print(f"  Extracted: ₹{price_value}")
+                                cleanup_chrome_driver(driver)
+                                return price_value
                 except Exception as e:
                     print(f"Trying .pdp-price selector failed: {e}")
                 
@@ -234,10 +273,7 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
                 import traceback
                 traceback.print_exc()
                 if driver:
-                    try:
-                        driver.quit()
-                    except:
-                        pass
+                    cleanup_chrome_driver(driver)
                     driver = None
                 if attempt < max_retries - 1:
                     continue
@@ -247,20 +283,14 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
                 # Ensure driver is closed after successful price extraction
                 # Note: This will only run if no return statement was executed above
                 if driver:
-                    try:
-                        driver.quit()
-                    except:
-                        pass
+                    cleanup_chrome_driver(driver)
                     driver = None
     
         except (ProtocolError, RemoteDisconnected, ConnectionError, OSError) as e:
             last_error = e
             print(f"Connection error: {e}")
             if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
+                cleanup_chrome_driver(driver)
                 driver = None
             if attempt < max_retries - 1:
                 continue
@@ -273,10 +303,7 @@ def scrape_myntra_with_selenium(url: str, max_retries: int = 3):
             import traceback
             traceback.print_exc()
             if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
+                cleanup_chrome_driver(driver)
                 driver = None
             if attempt < max_retries - 1:
                 continue

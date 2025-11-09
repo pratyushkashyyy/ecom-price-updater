@@ -10,14 +10,13 @@ from product_price import EcommerceScraper
 from playwright.async_api import async_playwright
 
 
-async def scrape_price(url: str, headless: bool = True, use_virtual_display: bool = False) -> dict:
+async def scrape_price(url: str, use_virtual_display: bool = False) -> dict:
     """
     Scrape price from a single product URL
     
     Args:
         url: Product URL to scrape
-        headless: Run browser in headless mode (ignored if use_virtual_display=True)
-        use_virtual_display: Use Xvfb virtual display instead of headless mode
+        use_virtual_display: Use Xvfb virtual display for browser automation
         
     Returns:
         Dictionary with url, site, price, status, and method used
@@ -28,22 +27,20 @@ async def scrape_price(url: str, headless: bool = True, use_virtual_display: boo
         result = await scraper.scrape_product_price(
             playwright,
             url,
-            headless=headless,
             use_virtual_display=use_virtual_display
         )
     
     return result
 
 
-async def scrape_prices(urls: list, headless: bool = True, max_concurrent: int = 5, use_virtual_display: bool = False) -> list:
+async def scrape_prices(urls: list, max_concurrent: int = 5, use_virtual_display: bool = False) -> list:
     """
     Scrape prices from multiple product URLs
     
     Args:
         urls: List of product URLs to scrape
-        headless: Run browser in headless mode (ignored if use_virtual_display=True)
         max_concurrent: Maximum number of concurrent scrapes
-        use_virtual_display: Use Xvfb virtual display instead of headless mode
+        use_virtual_display: Use Xvfb virtual display for browser automation
         
     Returns:
         List of dictionaries with scraping results
@@ -55,7 +52,6 @@ async def scrape_prices(urls: list, headless: bool = True, max_concurrent: int =
             playwright,
             urls,
             max_concurrent=max_concurrent,
-            headless=headless,
             use_virtual_display=use_virtual_display
         )
     
@@ -149,7 +145,7 @@ async def main():
         urls = default_urls
         print(f"Using default test URLs ({len(urls)} sites)...")
         print("Usage: python scrape_prices.py [--virtual-display|-v] <url1> <url2> ...")
-        print("       --virtual-display or -v: Use virtual display instead of headless mode")
+        print("       --virtual-display or -v: Use virtual display for browser automation")
     
     print("=" * 70)
     print("E-commerce Price Scraper")
@@ -162,8 +158,7 @@ async def main():
         print("\nStarting scraping (trying Playwright first, falling back to Selenium if blocked)...")
     
     # Scrape prices
-    # Note: When use_virtual_display=True, headless is effectively False but browser runs in virtual display
-    results = await scrape_prices(urls, headless=not use_virtual_display, max_concurrent=5, use_virtual_display=use_virtual_display)
+    results = await scrape_prices(urls, max_concurrent=5, use_virtual_display=use_virtual_display)
     
     # Print results
     print("\n" + "=" * 70)

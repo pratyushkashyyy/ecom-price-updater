@@ -19,6 +19,13 @@ from scrape_prices import scrape_price
 from playwright.async_api import async_playwright
 from product_price import EcommerceScraper
 
+# Import Chrome cleanup utilities
+try:
+    from chrome_cleanup import kill_chrome_processes
+except ImportError:
+    def kill_chrome_processes(force=False, only_orphaned=False):
+        return 0
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -51,6 +58,10 @@ MAX_MAX_CONCURRENT = int(os.getenv('MAX_MAX_CONCURRENT', 20))  # Maximum allowed
 # Use threading.Semaphore since Flask is threaded and event loops may differ
 MAX_PLAYWRIGHT_INSTANCES = int(os.getenv('MAX_PLAYWRIGHT_INSTANCES', 10))
 playwright_semaphore = threading.Semaphore(MAX_PLAYWRIGHT_INSTANCES)
+
+# Chrome cleanup settings
+CHROME_CLEANUP_INTERVAL = int(os.getenv('CHROME_CLEANUP_INTERVAL', 300))  # Cleanup every 5 minutes
+CHROME_CLEANUP_THRESHOLD = int(os.getenv('CHROME_CLEANUP_THRESHOLD', 50))  # Cleanup if more than 50 processes
 
 
 def run_async(coro):
@@ -118,7 +129,7 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
     Args:
         product_url: Product URL to scrape
         max_retries: Maximum number of retry attempts
-        use_virtual_display: Use virtual display instead of headless
+        use_virtual_display: Use virtual display for browser automation
         
     Returns:
         Dictionary with scraping result
@@ -141,7 +152,6 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                         return await scraper.scrape_product_price(
                             playwright,
                             product_url,
-                            headless=True,
                             use_virtual_display=use_virtual_display
                         )
                 except Exception as e:
@@ -189,7 +199,8 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                     'method': 'unknown',
                     'attempts': max_retries,
                     'retried': True,
-                    'error': str(e)
+                    'error': str(e),
+                    'stock_status': {'in_stock': True, 'stock_status': 'unknown', 'message': None}
                 }
     
     # All retries exhausted
@@ -202,7 +213,8 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
         'method': 'unknown',
         'attempts': max_retries,
         'retried': True,
-        'error': last_error or 'Unknown error'
+        'error': last_error or 'Unknown error',
+        'stock_status': {'in_stock': True, 'stock_status': 'unknown', 'message': None}
     }
 
 
@@ -297,9 +309,11 @@ def get_price():
             elapsed_time = time.time() - start_time
             
             # Format response
+            stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
+            
             if result.get('price') and result['price'] != 'N/A' and result['price'] is not None:
                 logger.info(f"✅ Success: Price ₹{result['price']} fetched in {elapsed_time:.2f}s")
-                return jsonify({
+                response_data = {
                     'success': True,
                     'url': result['url'],
                     'price': result['price'],
@@ -308,8 +322,15 @@ def get_price():
                     'status': result.get('status', 'success'),
                     'attempts': result.get('attempts', 1),
                     'retried': result.get('retried', False),
-                    'elapsed_time': round(elapsed_time, 2)
-                })
+                    'elapsed_time': round(elapsed_time, 2),
+                    'stock_status': stock_status.get('stock_status', 'in_stock'),
+                    'in_stock': stock_status.get('in_stock', True),
+                    'stock_message': stock_status.get('message')
+                }
+                # Remove None values for cleaner JSON
+                if response_data['stock_message'] is None:
+                    del response_data['stock_message']
+                return jsonify(response_data)
             else:
                 logger.error(f"❌ Failed after {result.get('attempts', max_retries)} attempts")
                 return jsonify({
@@ -322,7 +343,10 @@ def get_price():
                     'attempts': result.get('attempts', max_retries),
                     'retried': result.get('retried', False),
                     'error': result.get('error', 'Could not extract price from the product page'),
-                    'elapsed_time': round(elapsed_time, 2)
+                    'elapsed_time': round(elapsed_time, 2),
+                    'stock_status': stock_status.get('stock_status', 'unknown'),
+                    'in_stock': stock_status.get('in_stock', True),
+                    'stock_message': stock_status.get('message')
                 }), 404
         
         except Exception as e:
@@ -463,7 +487,8 @@ def get_prices_batch():
                 else:
                     failed_count += 1
                 
-                formatted_results.append({
+                stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
+                formatted_result = {
                     'success': success,
                     'url': result.get('url', valid_urls[i] if i < len(valid_urls) else 'unknown'),
                     'price': result.get('price') if result.get('price') != 'N/A' else None,
@@ -471,8 +496,13 @@ def get_prices_batch():
                     'method': result.get('method', 'unknown'),
                     'status': result.get('status', 'unknown'),
                     'attempts': result.get('attempts', 1),
-                    'retried': result.get('retried', False)
-                })
+                    'retried': result.get('retried', False),
+                    'stock_status': stock_status.get('stock_status', 'unknown'),
+                    'in_stock': stock_status.get('in_stock', True)
+                }
+                if stock_status.get('message'):
+                    formatted_result['stock_message'] = stock_status.get('message')
+                formatted_results.append(formatted_result)
         
         elapsed_time = time.time() - start_time
         logger.info(f"✅ Batch complete: {success_count} success, {failed_count} failed in {elapsed_time:.2f}s")

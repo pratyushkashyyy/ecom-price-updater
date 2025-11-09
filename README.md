@@ -153,7 +153,6 @@ curl http://localhost:5000/health
 ├── ajio_selenium.py       # Ajio-specific scraper
 ├── myntra_selenium.py     # Myntra-specific scraper
 ├── meesho_selenium.py     # Meesho-specific scraper
-├── meesho_price.py        # Alternative Meesho scraper
 ├── virtual_display.py     # Virtual display support (Linux)
 ├── requirements.txt       # Python dependencies
 └── README.md             # This file
