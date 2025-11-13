@@ -10,6 +10,10 @@ from http.client import RemoteDisconnected
 
 # Import cleanup utilities
 try:
+    import sys
+    from pathlib import Path
+    # Add parent directory to path to import chrome_cleanup
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     from chrome_cleanup import cleanup_chrome_driver
 except ImportError:
     # Fallback if chrome_cleanup is not available

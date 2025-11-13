@@ -269,7 +269,7 @@ class EcommerceScraper:
         elif 'hygulife' in domain or 'hyugalife' in domain:
             return 'hygulife'
         elif 'bitli.in' in domain:
-            return 'hygulife'  # bitli.in redirects to hygulife.com
+            return 'generic'  # bitli.in can redirect to different sites (hygulife, nykaa, etc.), identify from final URL
         else:
             return 'generic'
 
@@ -581,9 +581,9 @@ class EcommerceScraper:
         is_myntra_short = 'myntr.it' in product_url.lower()
         is_bitli_short = 'bitli.in' in product_url.lower()
         
-        # Bitli.in short URLs (hygulife.com) may have redirects
+        # Bitli.in short URLs may redirect to different sites (hygulife, nykaa, etc.)
         if is_bitli_short:
-            print(f"  🔄 Bitli short URL detected (hygulife.com) - waiting for redirects...")
+            print(f"  🔄 Bitli short URL detected - waiting for redirects...")
             # Wait for redirects to complete by checking if URL stabilizes
             max_redirect_wait = 20  # Maximum seconds to wait for redirects
             redirect_check_interval = 0.5
@@ -680,7 +680,7 @@ class EcommerceScraper:
         
         if site_to_use == 'nykaa':
             try:
-                from nykaa_selenium import scrape_nykaa_with_selenium
+                from scrapers.selenium.nykaa_selenium import scrape_nykaa_with_selenium
                 price = scrape_nykaa_with_selenium(product_url)
                 if price and price != 'N/A':
                     if vdisplay:
@@ -692,7 +692,7 @@ class EcommerceScraper:
                 print(f"⚠️  Error in nykaa_selenium: {e}")
         elif site_to_use == 'meesho':
             try:
-                from meesho_selenium import scrape_meesho_with_selenium
+                from scrapers.selenium.meesho_selenium import scrape_meesho_with_selenium
                 price = scrape_meesho_with_selenium(product_url)
                 if price and price != 'N/A':
                     # Don't stop virtual display here - it's managed at a higher level
@@ -706,7 +706,7 @@ class EcommerceScraper:
                 # Fall through to inline Selenium
         elif site_to_use == 'ajio':
             try:
-                from ajio_selenium import scrape_ajio_with_selenium
+                from scrapers.selenium.ajio_selenium import scrape_ajio_with_selenium
                 price = scrape_ajio_with_selenium(product_url)
                 if price and price != 'N/A':
                     if vdisplay:
@@ -721,7 +721,7 @@ class EcommerceScraper:
                 # Fall through to inline Selenium
         elif site_to_use == 'myntra':
             try:
-                from myntra_selenium import scrape_myntra_with_selenium
+                from scrapers.selenium.myntra_selenium import scrape_myntra_with_selenium
                 from urllib3.exceptions import ProtocolError
                 from http.client import RemoteDisconnected
                 
@@ -1392,9 +1392,9 @@ class EcommerceScraper:
         is_bitli_short = 'bitli.in' in product_url.lower()
         is_flipkart_short = 'fkrt.cc' in product_url.lower()
         
-        # Bitli.in short URLs (hygulife.com) may have redirects, handle similar to Myntra
+        # Bitli.in short URLs may redirect to different sites (hygulife, nykaa, etc.), handle similar to Myntra
         if is_bitli_short:
-            print(f"  🔄 Bitli short URL detected (hygulife.com) - waiting for redirects...")
+            print(f"  🔄 Bitli short URL detected - waiting for redirects...")
             try:
                 # Start navigation with domcontentloaded
                 await page.goto(product_url, timeout=90000, wait_until='domcontentloaded')
@@ -1677,10 +1677,18 @@ class EcommerceScraper:
             # Ensure DISPLAY is set for Playwright's subprocess
             import os
             env = os.environ.copy()
+            # Only use headed mode if virtual display is actually active
+            # If virtual display was requested but failed, fall back to headless
+            use_headed = False
             if use_virtual_display and vdisplay and vdisplay.is_active:
                 env['DISPLAY'] = vdisplay.display_var
+                use_headed = True
+            elif use_virtual_display and (not vdisplay or not vdisplay.is_active):
+                # Virtual display was requested but failed, use headless mode
+                print("⚠️  Virtual display failed, falling back to headless mode")
+                use_headed = False
             
-            browser = await playwright.chromium.launch(headless=False, env=env)
+            browser = await playwright.chromium.launch(headless=not use_headed, env=env)
             context = await browser.new_context(
                 ignore_https_errors=True,
             )
@@ -1709,6 +1717,20 @@ class EcommerceScraper:
                             page_title = await page.title()
                         except:
                             pass
+                    
+                    # Check for Nykaa 404 page
+                    if site == 'nykaa' and ('ek 404' in page_title.lower() or '404' in page_title.lower()):
+                        print(f"  ⚠️  Nykaa 404 page detected - product URL may be expired or invalid")
+                        return {
+                            'url': product_url,
+                            'site': site,
+                            'price': 'N/A',
+                            'status': 'Product page not found (404) - URL may be expired',
+                            'method': 'playwright',
+                            'error': 'Nykaa 404 page detected',
+                            'stock_status': {'in_stock': False, 'stock_status': 'not_found', 'message': 'Product page not found'},
+                            'success': False
+                        }
                     
                     # Check for blocking indicators
                     blocked = any(indicator in page_content.lower() or indicator in page_title.lower() 

@@ -44,6 +44,34 @@ class VirtualDisplay:
             return False
         
         try:
+            # Check if display is already in use
+            import socket
+            try:
+                test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                test_socket.connect(f'/tmp/.X11-unix/X{self.display_num}')
+                test_socket.close()
+                print(f"⚠️  Display {self.display_var} is already in use. Trying alternative display numbers...")
+                # Try alternative display numbers
+                for alt_display in range(100, 110):
+                    alt_display_var = f":{alt_display}"
+                    try:
+                        test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                        test_socket.connect(f'/tmp/.X11-unix/X{alt_display}')
+                        test_socket.close()
+                        continue  # This one is also in use
+                    except (socket.error, FileNotFoundError):
+                        # This display is available
+                        self.display_num = alt_display
+                        self.display_var = alt_display_var
+                        print(f"✅ Using alternative display: {alt_display_var}")
+                        break
+                else:
+                    print(f"❌ All display numbers 99-109 are in use")
+                    return False
+            except (socket.error, FileNotFoundError):
+                # Display is not in use, proceed
+                pass
+            
             # Start Xvfb
             cmd = [
                 'Xvfb',
@@ -75,11 +103,20 @@ class VirtualDisplay:
                 print(f"✅ Virtual display started: DISPLAY={self.display_var}")
                 return True
             else:
-                print(f"❌ Failed to start Xvfb")
+                # Xvfb failed to start, capture error output
+                try:
+                    stdout, stderr = self.xvfb_process.communicate(timeout=1)
+                    error_msg = stderr.decode('utf-8', errors='ignore') if stderr else 'Unknown error'
+                    print(f"❌ Failed to start Xvfb on {self.display_var}")
+                    print(f"   Error: {error_msg.strip()}")
+                except:
+                    print(f"❌ Failed to start Xvfb on {self.display_var} (process exited immediately)")
                 return False
                 
         except Exception as e:
             print(f"❌ Error starting virtual display: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def stop(self):

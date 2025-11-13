@@ -52,6 +52,9 @@ MAX_DELAY = int(os.getenv('MAX_DELAY', 30))  # Maximum delay between retries (se
 TIMEOUT_SECONDS = int(os.getenv('TIMEOUT_SECONDS', 60))  # Timeout per request (seconds)
 DEFAULT_MAX_CONCURRENT = int(os.getenv('DEFAULT_MAX_CONCURRENT', 10))  # Default concurrent requests
 MAX_MAX_CONCURRENT = int(os.getenv('MAX_MAX_CONCURRENT', 20))  # Maximum allowed concurrent requests
+# Default virtual display setting - use True on headless servers (Linux without display)
+# Can be overridden via USE_VIRTUAL_DISPLAY env var or request parameter
+DEFAULT_USE_VIRTUAL_DISPLAY = os.getenv('USE_VIRTUAL_DISPLAY', 'true').lower() == 'true'
 
 # Global semaphore to limit concurrent Playwright instances across all requests
 # This prevents resource exhaustion from too many open file descriptors
@@ -122,18 +125,22 @@ def calculate_backoff_delay(attempt: int) -> float:
 
 
 async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES, 
-                               use_virtual_display: bool = False) -> dict:
+                               use_virtual_display: bool = None) -> dict:
     """
     Scrape price with retry logic until successful or max retries reached
     
     Args:
         product_url: Product URL to scrape
         max_retries: Maximum number of retry attempts
-        use_virtual_display: Use virtual display for browser automation
+        use_virtual_display: Use virtual display for browser automation (defaults to DEFAULT_USE_VIRTUAL_DISPLAY)
         
     Returns:
         Dictionary with scraping result
     """
+    # Use default if not specified
+    if use_virtual_display is None:
+        use_virtual_display = DEFAULT_USE_VIRTUAL_DISPLAY
+    
     last_error = None
     
     for attempt in range(max_retries):
@@ -148,15 +155,18 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                 # This prevents resource exhaustion from too many open file descriptors
                 playwright_semaphore.acquire()
                 try:
+                    logger.info(f"Starting scrape with use_virtual_display={use_virtual_display}")
                     async with async_playwright() as playwright:
-                        return await scraper.scrape_product_price(
+                        result = await scraper.scrape_product_price(
                             playwright,
                             product_url,
                             use_virtual_display=use_virtual_display
                         )
+                        logger.info(f"Scrape completed. Success: {result.get('success')}, Price: {result.get('price')}, Status: {result.get('status')}, Error: {result.get('error')}")
+                        return result
                 except Exception as e:
                     # Log but don't suppress - let it propagate for retry logic
-                    logger.warning(f"Playwright error in scrape: {e}")
+                    logger.error(f"Playwright error in scrape: {e}", exc_info=True)
                     raise
                 finally:
                     playwright_semaphore.release()
@@ -171,8 +181,10 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                 return result
             
             # If price not found, log and retry
-            logger.warning(f"⚠️  Attempt {attempt + 1} failed: Price not found. Status: {result.get('status')}")
-            last_error = result.get('status', 'Price not found')
+            error_details = result.get('error', 'No error message')
+            status_details = result.get('status', 'Unknown status')
+            logger.warning(f"⚠️  Attempt {attempt + 1} failed: Price not found. Status: {status_details}, Error: {error_details}")
+            last_error = f"{status_details}. Error: {error_details}" if error_details else status_details
             
             # If we have more retries, wait before next attempt
             if attempt < max_retries - 1:
@@ -272,11 +284,17 @@ def get_price():
         if request.method == 'POST':
             data = request.get_json() or {}
             product_url = data.get('url', '').strip()
-            use_virtual_display = data.get('use_virtual_display', False)
+            # Use DEFAULT_USE_VIRTUAL_DISPLAY if not specified in request
+            use_virtual_display = data.get('use_virtual_display', DEFAULT_USE_VIRTUAL_DISPLAY)
             max_retries = int(data.get('max_retries', MAX_RETRIES))
         else:  # GET
             product_url = request.args.get('url', '').strip()
-            use_virtual_display = request.args.get('use_virtual_display', 'false').lower() == 'true'
+            # Use DEFAULT_USE_VIRTUAL_DISPLAY if not specified in request
+            use_virtual_display_param = request.args.get('use_virtual_display')
+            if use_virtual_display_param is not None:
+                use_virtual_display = use_virtual_display_param.lower() == 'true'
+            else:
+                use_virtual_display = DEFAULT_USE_VIRTUAL_DISPLAY
             max_retries = int(request.args.get('max_retries', MAX_RETRIES))
         
         # Validate URL
@@ -300,7 +318,7 @@ def get_price():
         # Validate max_retries
         max_retries = max(1, min(max_retries, 10))  # Clamp between 1 and 10
         
-        logger.info(f"📥 Request received: URL={product_url[:80]}..., max_retries={max_retries}")
+        logger.info(f"📥 Request received: URL={product_url[:80]}..., max_retries={max_retries}, use_virtual_display={use_virtual_display}")
         
         # Scrape price with retries
         try:
@@ -410,7 +428,8 @@ def get_prices_batch():
     try:
         data = request.get_json() or {}
         urls = data.get('urls', [])
-        use_virtual_display = data.get('use_virtual_display', False)
+        # Use DEFAULT_USE_VIRTUAL_DISPLAY if not specified in request
+        use_virtual_display = data.get('use_virtual_display', DEFAULT_USE_VIRTUAL_DISPLAY)
         max_retries = int(data.get('max_retries', MAX_RETRIES))
         max_concurrent = int(data.get('max_concurrent', DEFAULT_MAX_CONCURRENT))
         
@@ -568,6 +587,7 @@ if __name__ == '__main__':
     print(f"  Max Retries: {MAX_RETRIES}")
     print(f"  Timeout: {TIMEOUT_SECONDS}s")
     print(f"  Debug Mode: {debug_mode}")
+    print(f"  Use Virtual Display (default): {DEFAULT_USE_VIRTUAL_DISPLAY}")
     print("\nAPI Endpoints:")
     print("  GET/POST  /api/price       - Get price for a single product URL (with retries)")
     print("  POST      /api/price/batch - Get prices for multiple product URLs (with retries)")
@@ -578,12 +598,30 @@ if __name__ == '__main__':
     print(f"  MAX_RETRIES: {MAX_RETRIES}")
     print(f"  DEFAULT_MAX_CONCURRENT: {DEFAULT_MAX_CONCURRENT}")
     print(f"  MAX_MAX_CONCURRENT: {MAX_MAX_CONCURRENT}")
+    print(f"  USE_VIRTUAL_DISPLAY: {DEFAULT_USE_VIRTUAL_DISPLAY} (default)")
     print(f"  PORT: {port}")
     print(f"  HOST: {host}")
     print("\nExample:")
     print('  curl -X POST http://localhost:9000/api/price \\')
     print('    -H "Content-Type: application/json" \\')
     print('    -d \'{"url": "https://www.amazon.in/product-url", "max_retries": 5}\'')
+    # Check virtual display availability if default is enabled
+    if DEFAULT_USE_VIRTUAL_DISPLAY:
+        try:
+            import platform
+            if platform.system() == 'Linux':
+                import subprocess
+                try:
+                    subprocess.run(['which', 'Xvfb'], check=True, capture_output=True)
+                    print(f"✅ Virtual display (Xvfb) is available")
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    print(f"⚠️  WARNING: Virtual display (Xvfb) is not installed but DEFAULT_USE_VIRTUAL_DISPLAY=True")
+                    print(f"   Install with: sudo apt-get install xvfb")
+            else:
+                print(f"⚠️  WARNING: Virtual display is Linux-only. Current OS: {platform.system()}")
+        except Exception as e:
+            print(f"⚠️  Could not check virtual display availability: {e}")
+    
     print(f"\nStarting server on http://{host}:{port}")
     print(f"Logging level: {logging.getLevelName(logger.level)}")
     print("=" * 70)

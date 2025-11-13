@@ -8,6 +8,10 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # Import cleanup utilities
 try:
+    import sys
+    from pathlib import Path
+    # Add parent directory to path to import chrome_cleanup
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     from chrome_cleanup import cleanup_chrome_driver
 except ImportError:
     # Fallback if chrome_cleanup is not available
@@ -62,6 +66,9 @@ def scrape_ajio_with_selenium(url: str):
                 print(f"Failed to initialize Chrome: {chrome_init_error}")
                 # Clean up any partial processes
                 try:
+                    import sys
+                    from pathlib import Path
+                    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
                     from chrome_cleanup import kill_chrome_processes
                     kill_chrome_processes(force=True, only_orphaned=True)
                 except:
@@ -279,6 +286,9 @@ def scrape_ajio_with_selenium(url: str):
             if is_chrome_error and attempt < max_retries - 1:
                 print(f"Chrome connection error detected, will retry...")
                 try:
+                    import sys
+                    from pathlib import Path
+                    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
                     from chrome_cleanup import kill_chrome_processes
                     print(f"Cleaning up Chrome processes after connection error...")
                     # Clean up any stuck Chrome/ChromeDriver processes
