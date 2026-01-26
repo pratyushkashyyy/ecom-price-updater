@@ -21,227 +21,60 @@ class EcommerceScraper:
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
         ]
         
-        # Define stock status indicators for different e-commerce sites
-        self.stock_indicators = {
-            'amazon': {
-                'out_of_stock': [
-                    'currently unavailable',
-                    'out of stock',
-                    'temporarily out of stock',
-                    "we don't know when or if this item will be back in stock",
-                    'unavailable',
-                    'sold out',
-                    'this item is currently unavailable',
-                    'out of stock.',
-                    'currently out of stock'
-                ],
-                'selectors': [
-                    '#availability span',
-                    '.a-color-state',
-                    '#outOfStock',
-                    '#availability',
-                    '.a-alert-inline-info',
-                    '[data-asin] .a-color-state'
-                ]
-            },
-            'flipkart': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable',
-                    'unavailable',
-                    'out of stock!',
-                    'notify me',
-                    'notify when available',
-                    'coming soon',
-                    'temporarily unavailable'
-                ],
-                'selectors': [
-                    '._16FRp0',  # Flipkart out of stock indicator
-                    '._9-sL7L',  # Flipkart unavailable indicator
-                    '.sold-out',
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]',
-                    '[class*="notify"]',  # Notify Me button
-                    'button:has-text("Notify")',
-                    'button:has-text("Notify Me")',
-                    '[class*="unavailable"]',
-                    '._2UzuFa',  # Flipkart notify button class
-                    '._2KpZ6l._2UzuFa'  # Flipkart notify button
-                ]
-            },
-            'myntra': {
-                'out_of_stock': [
-                    'sold out',
-                    'out of stock',
-                    'currently unavailable',
-                    'unavailable'
-                ],
-                'selectors': [
-                    '.sold-out',
-                    '[class*="sold-out"]',
-                    '[class*="out-of-stock"]',
-                    '.pdp-notify-me'
-                ]
-            },
-            'meesho': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable'
-                ],
-                'selectors': [
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]',
-                    '.sold-out'
-                ]
-            },
-            'ajio': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable'
-                ],
-                'selectors': [
-                    '.sold-out',
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]'
-                ]
-            },
-            'nykaa': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable'
-                ],
-                'selectors': [
-                    '.sold-out',
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]'
-                ]
-            },
-            'hygulife': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable',
-                    'unavailable',
-                    'temporarily out of stock',
-                    'notify me',
-                    'backorder'
-                ],
-                'selectors': [
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]',
-                    '[class*="unavailable"]',
-                    '.sold-out',
-                    '.out-of-stock',
-                    '.stock-status',
-                    '[class*="stock"]'
-                ]
-            },
-            'generic': {
-                'out_of_stock': [
-                    'out of stock',
-                    'sold out',
-                    'currently unavailable',
-                    'unavailable',
-                    'temporarily out of stock'
-                ],
-                'selectors': [
-                    '[class*="out-of-stock"]',
-                    '[class*="sold-out"]',
-                    '[class*="unavailable"]',
-                    '.sold-out',
-                    '.out-of-stock'
-                ]
-            }
-        }
-        
-        # Define price selectors for different e-commerce sites
-        self.site_selectors = {
-            'amazon': [
-                'input[type="hidden"][name="items[0.base][customerVisiblePrice][amount]"]',  # Top priority: Hidden input with price value
-                '.a-price.priceToPay .a-offscreen',  # Main price in buybox (most reliable)
-                '.a-price.priceToPay .a-price-whole',  # Main price whole number
-                '.a-price.aok-align-center.priceToPay .a-offscreen',  # Buybox centered price
-                '#tp_price_block_total_price_ww .a-offscreen',  # Total price
-                '.a-price.aok-align-center .a-offscreen',  # Centered price
-                '.a-price.aok-align-center .a-price-whole',  # Centered whole price
-                '.a-price-whole',
-                '.a-price .a-offscreen', 
-                '.a-price-range',
-                '.a-price .a-price-symbol',
-                '#priceblock_dealprice',
-                '#priceblock_ourprice',
-                '.a-price .a-text-price',
-                '.a-price .a-price-symbol + span',
-                '.a-price-range .a-price-symbol + span',
-                '.a-price .a-offscreen + span'
-            ],
-            'flipkart': [
-                '._30jeq3',
-                '._16Jk6d',
-                '._1vC4OE',
-                '._3qQ9m1',
-                '.Nx9bqj'
-            ],
-            'myntra': [
-                '.pdp-price',
-                '.pdp-discounted-price',
-                '.pdp-mrp',
-                '[class*="price"]'
-            ],
-            'nykaa': [
-                '.css-1jczs19',
-                '.css-1d0jf8e',
-                '[class*="price"]',
-                '.price'
-            ],
-            'snapdeal': [
-                '.payBlkBig',
-                '.pdp-final-price',
-                '.pdp-selling-price',
-                '[class*="price"]'
-            ],
-            'ajio': [
-                '.prod-sp',  # Selling price
-                'span[class*="prod-sp"]',
-                '.prod-base-price',  # MRP
-                'span[class*="price"]',
-                '[class*="prod-base-price"]',
-                '[data-id="price"]',
-                '.price',
-            ],
-            'meesho': [
-                '.pdp-price',
-                '[class*="pdp-price"]',
-                'span[class*="price"]',
-                'div[class*="price"]',
-                '[data-price]',
-                '.price',
-            ],
-            'shopclues': [
-                '.f_price',
-                '.price',
-                '[class*="price"]'
-            ],
-            'hygulife': [
-                '.price',
-                '.product-price',
-                '.sale-price',
-                '.current-price',
-                '[class*="price"]',
-                '[class*="Price"]',
-                '[data-price]',
-                '.woocommerce-Price-amount',
-                'span.price',
-                'div.price',
-                '#price',
-                '.price-current',
-                '.selling-price'
-            ]
-        }
+        # Load selectors from JSON file
+        self.load_selectors()
+
+    def load_selectors(self):
+        """Load selectors from selectors.json file"""
+        try:
+            with open('selectors.json', 'r') as f:
+                data = json.load(f)
+            
+            self.stock_indicators = {}
+            self.site_selectors = {}
+            self.name_selectors = {}
+            self.image_selectors = {}
+            self.image_selectors = {}
+            
+            for site, config in data.items():
+                # Setup stock indicators
+                self.stock_indicators[site] = {
+                    'out_of_stock': config.get('out_of_stock', []),
+                    'selectors': config.get('selectors', [])  # Some sites might have specific selectors for stock
+                }
+                
+                # Setup price selectors
+                self.site_selectors[site] = config.get('price_selectors', [])
+                
+                # Setup other selectors
+                self.name_selectors[site] = config.get('name_selectors', [])
+                self.image_selectors[site] = config.get('image_selectors', [])
+                self.image_selectors[site] = config.get('image_selectors', [])
+                
+            # Add generic fallback if not present
+            if 'generic' not in self.stock_indicators:
+                self.stock_indicators['generic'] = {
+                    'out_of_stock': [
+                        'out of stock',
+                        'sold out',
+                        'currently unavailable',
+                        'unavailable',
+                        'temporarily out of stock'
+                    ],
+                    'selectors': [
+                        '[class*="out-of-stock"]',
+                        '[class*="sold-out"]',
+                        '[class*="unavailable"]',
+                        '.sold-out',
+                        '.out-of-stock'
+                    ]
+                }
+                
+        except Exception as e:
+            print(f"Error loading selectors.json: {e}")
+            # Fallback to empty dicts or basic defaults if file load fails
+            self.stock_indicators = {'generic': {'out_of_stock': ['out of stock'], 'selectors': []}}
+            self.site_selectors = {}
 
     def identify_site(self, url: str) -> str:
         """Identify the e-commerce site from URL"""
@@ -293,7 +126,7 @@ class EcommerceScraper:
         content_lower = (page_content + ' ' + page_title).lower()
         
         for oos_text in out_of_stock_texts:
-            if oos_text in content_lower:
+            if oos_text.lower() in content_lower:
                 stock_status['in_stock'] = False
                 stock_status['stock_status'] = 'out_of_stock'
                 stock_status['message'] = f'Product appears to be out of stock (detected: "{oos_text}")'
@@ -310,7 +143,7 @@ class EcommerceScraper:
                         element = driver.find_element(By.CSS_SELECTOR, selector)
                         if element and element.is_displayed():
                             text = element.text.strip().lower()
-                            if any(oos_text in text for oos_text in out_of_stock_texts):
+                            if any(oos_text.lower() in text for oos_text in out_of_stock_texts):
                                 stock_status['in_stock'] = False
                                 stock_status['stock_status'] = 'out_of_stock'
                                 stock_status['message'] = f'Product is out of stock (selector: {selector})'
@@ -343,6 +176,280 @@ class EcommerceScraper:
                     pass
         
         return stock_status
+    
+        return stock_status
+
+    def clean_image_url(self, url: str) -> str:
+        """
+        Clean image URL to get the highest resolution version.
+        Removes resizing parameters and specific patterns.
+        """
+        if not url:
+            return None
+            
+        try:
+            # Amazon specific: Remove _SL, _AC, _SX patterns for full size
+            # e.g., https://.../image._SL1500_.jpg -> https://.../image.jpg
+            if 'amazon' in url or 'media-amazon' in url:
+                url = re.sub(r'\._[A-Z]{2}\d+_', '', url)
+                url = re.sub(r'\._[A-Z]{2}\d+,\d+,\d+,\d+_', '', url)
+            
+            # Common resizing params
+            url = re.sub(r'\?width=\d+&?', '?', url)
+            url = re.sub(r'\?height=\d+&?', '?', url)
+            url = re.sub(r'\?w=\d+&?', '?', url)
+            url = re.sub(r'\?h=\d+&?', '?', url)
+            
+            # Remove trailing ? or & if empty
+            if url.endswith('?') or url.endswith('&'):
+                url = url[:-1]
+                
+            return url.strip()
+        except:
+            return url
+
+    def extract_product_details(self, driver_or_page, site: str, is_async: bool = False) -> dict:
+        """
+        Extract product details (name, image, rating) using selectors or generic meta tags.
+        Supports both Selenium (driver) and Playwright (page).
+        """
+        details = {
+            'name': None,
+            'image_url': None,
+            'name': None,
+            'image_url': None
+        }
+        
+        # Helper to get text/attribute safely
+        async def get_async(selector, attr=None):
+            try:
+                el = await driver_or_page.query_selector(selector)
+                if el:
+                    if attr:
+                        return await el.get_attribute(attr)
+                    return await el.text_content()
+            except:
+                pass
+            return None
+            
+        def get_sync(selector, attr=None):
+            try:
+                from selenium.webdriver.common.by import By
+                els = driver_or_page.find_elements(By.CSS_SELECTOR, selector)
+                if els:
+                    if attr:
+                        return els[0].get_attribute(attr)
+                    return els[0].text
+            except:
+                pass
+            return None
+
+        # 1. Extract Name
+        selectors = self.name_selectors.get(site, [])
+        for sel in selectors:
+            val = None
+            if is_async:
+                # Need to use run_until_complete if calling from async context but logic not yet fully async-ready
+                # But here we assume this method is called from proper context (async or sync)
+                # Since we can't easily mix, we will split common logic or check is_async flag
+                pass # Handled below
+            else:
+                pass
+        
+        # To avoid complexity, let's process each field sequentially with check
+        
+        # --- NAME ---
+        name = None
+        # Try site-specific selectors
+        for sel in self.name_selectors.get(site, []):
+            if is_async:
+                 # Logic handled better solely inside extract_product_details_async
+                 pass 
+            else:
+                 val = get_sync(sel)
+                 if val and len(val.strip()) > 0:
+                     name = val.strip()
+                     break
+                     
+        # Fallback to meta tags (sync)
+        if not name and not is_async:
+             try:
+                from selenium.webdriver.common.by import By
+                # og:title
+                metas = driver_or_page.find_elements(By.CSS_SELECTOR, 'meta[property="og:title"]')
+                if metas:
+                    name = metas[0].get_attribute('content')
+                if not name:
+                    name = driver_or_page.title
+                
+                # Filter generic titles (especially for Flipkart)
+                if name and any(generic in name for generic in ['Item Store Online', 'Flipkart.com', 'Online Shopping Site', 'Buy Online']):
+                    # Try harder to find specific element
+                    try:
+                        h1s = driver_or_page.find_elements(By.TAG_NAME, 'h1')
+                        for h1 in h1s:
+                            txt = h1.text.strip()
+                            if txt and len(txt) > 5 and 'Flipkart' not in txt:
+                                name = txt
+                                break
+                    except:
+                        pass
+                    
+                    # If still generic, set to None so we don't return garbage
+                    if name and any(generic in name for generic in ['Item Store Online', 'Flipkart.com', 'Online Shopping Site', 'Buy Online']):
+                        name = None
+             except:
+                 pass
+        
+        details['name'] = name
+        
+        # --- IMAGE ---
+        image = None
+        
+        # helper for image attributes
+        img_attrs = ['src', 'data-src', 'srcset', 'data-srcset', 'data-high-res', 'data-old-hires']
+        
+        for sel in self.image_selectors.get(site, []):
+            if not is_async:
+                # For each selector, try all common image attributes
+                for attr in img_attrs:
+                    val = get_sync(sel, attr)
+                    if val:
+                        if 'srcset' in attr:
+                            # Parse srcset: pick largest (last entry usually)
+                            try:
+                                parts = val.split(',')
+                                last_part = parts[-1].strip()
+                                # format: url size, we want url
+                                val = last_part.split(' ')[0]
+                            except:
+                                continue
+                        
+                        cleaned_val = self.clean_image_url(val)
+                        if cleaned_val and 'data:image' not in cleaned_val and 'placeholder' not in cleaned_val:
+                            image = cleaned_val
+                            break
+                if image:
+                    break
+        
+        
+        # Fallback: Use product name to find image (Robust heuristic)
+        if not image and name:
+            try:
+                # Clean name for matching (take first 2 words)
+                name_parts = name.split()
+                if len(name_parts) >= 2:
+                    short_name = f"{name_parts[0]} {name_parts[1]}"
+                    # Find all images with alt text containing short name
+                    if is_async:
+                        # Async Not fully implemented for this fallback yet
+                        pass 
+                    else:
+                        from selenium.webdriver.common.by import By
+                        # Case insensitive xpath match for alt text
+                        xpath = f"//img[contains(translate(@alt, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{short_name.lower()}')]"
+                        imgs = driver_or_page.find_elements(By.XPATH, xpath)
+                        for img in imgs:
+                            # Try attributes
+                            for attr in img_attrs:
+                                val = img.get_attribute(attr)
+                                clean = self.clean_image_url(val)
+                                if clean and 'data:image' not in clean:
+                                    image = clean
+                                    break
+                            if image: break
+            except:
+                pass
+
+        # Fallback meta tags (sync)
+        if not image and not is_async:
+            try:
+                from selenium.webdriver.common.by import By
+                metas = driver_or_page.find_elements(By.CSS_SELECTOR, 'meta[property="og:image"]')
+                if metas:
+                    image = self.clean_image_url(metas[0].get_attribute('content'))
+            except:
+                pass
+                
+        details['image_url'] = image
+        
+        return details
+
+    async def extract_product_details_async(self, page, site: str) -> dict:
+        """Async version of details extraction for Playwright"""
+        details = {
+            'name': None,
+            'image_url': None,
+            'name': None,
+            'image_url': None
+        }
+        
+        # --- NAME ---
+        name = None
+        for sel in self.name_selectors.get(site, []):
+            try:
+                el = await page.query_selector(sel)
+                if el:
+                    txt = await el.text_content()
+                    if txt and txt.strip():
+                        name = txt.strip()
+                        break
+            except:
+                continue
+                
+        # Fallback meta tags
+        if not name:
+            try:
+                el = await page.query_selector('meta[property="og:title"]')
+                if el:
+                    name = await el.get_attribute('content')
+                if not name:
+                    name = await page.title()
+            except:
+                pass
+        details['name'] = name
+        
+        # --- IMAGE ---
+        image = None
+        for sel in self.image_selectors.get(site, []):
+            try:
+                el = await page.query_selector(sel)
+                if el:
+                    # Try to get high-res attributes first
+                    found_val = None
+                    for attr in ['data-high-res', 'data-zoom-image', 'data-old-hires', 'data-src', 'srcset', 'src']:
+                        val = await el.get_attribute(attr)
+                        if val:
+                            if attr == 'srcset':
+                                try:
+                                    parts = val.split(',')
+                                    last_part = parts[-1].strip()
+                                    val = last_part.split(' ')[0]
+                                except:
+                                    continue
+                            found_val = val
+                            break
+                    
+                    if found_val:
+                        image = self.clean_image_url(found_val)
+                        if image:
+                            break
+            except:
+                continue
+        
+        # Fallback meta tags
+        if not image:
+            try:
+                el = await page.query_selector('meta[property="og:image"]')
+                if el:
+                    image = self.clean_image_url(await el.get_attribute('content'))
+            except:
+                pass
+        details['image_url'] = image
+
+
+        
+        return details
     
     async def check_stock_status_async(self, page, site: str) -> dict:
         """
@@ -784,6 +891,7 @@ class EcommerceScraper:
             driver = uc.Chrome(options=options, version_main=None)
             
             try:
+                price_value = 'N/A'
                 # NEW FLOW: Navigate → Capture final URL → Identify site → Extract price
                 # Use site_to_use if available, otherwise identify from URL
                 initial_site_for_nav = site_to_use if 'site_to_use' in locals() else (site if site is not None else self.identify_site(product_url))
@@ -1295,29 +1403,42 @@ class EcommerceScraper:
                             except:
                                 pass
                 
-                return 'N/A'
+                # If no price was found, set to 'N/A'
+                if found_price_value is None:
+                    found_price_value = 'N/A'
+
             finally:
-                # Always cleanup driver, even if there was an error
+                # Extract additional details
+                details = self.extract_product_details(driver, site)
+                
+                # Check stock status
+                stock_status = self.check_stock_status(driver.page_source, driver.title, site, driver=driver)
+                
+                # Clean up
                 try:
-                    if 'driver' in locals() and driver:
-                        # Use cleanup utility for better cleanup
-                        try:
-                            from chrome_cleanup import cleanup_chrome_driver
-                            cleanup_chrome_driver(driver)
-                        except ImportError:
-                            # Fallback to standard cleanup
-                            try:
-                                driver.quit()
-                            except:
-                                try:
-                                    driver.close()
-                                except:
-                                    pass
+                     from chrome_cleanup import cleanup_chrome_driver
+                     cleanup_chrome_driver(driver)
+                except ImportError:
+                     # Fallback to standard cleanup if utility not found
+                     try:
+                         driver.quit()
+                     except:
+                         try:
+                             driver.close()
+                         except:
+                             pass
                 except Exception as e:
                     print(f"  ⚠️  Error during driver cleanup: {e}")
-                finally:
+                finally: # This finally block is for the inner try-except for driver cleanup
                     if vdisplay:
                         vdisplay.stop()
+                        
+                result = {
+                    'price': price_value,
+                    'stock_status': stock_status
+                }
+                result.update(details)
+                return result
         except Exception as e:
             # Ensure cleanup even on exception
             try:
@@ -1632,15 +1753,10 @@ class EcommerceScraper:
                 print(f"⚠️  Error setting up virtual display: {e}")
                 vdisplay = None
         
-        # If force_selenium is True, use Selenium directly
-        # Otherwise, try Playwright first even for sites that might be blocked
-        sites_known_blocked = ['nykaa', 'meesho', 'ajio', 'myntra']  # Sites known to block Playwright or need Selenium
-        
-        # Only use Selenium directly if explicitly forced
-        # Otherwise, try Playwright first and fall back to Selenium if it fails
-        if force_selenium:
-            # Add timeout for Selenium operations to prevent hanging
-            # Meesho and Myntra can take 60-90 seconds, so set timeout to 120 seconds
+        # PRIMARY STRATEGY: Selenium (undetected_chromedriver)
+        # We attempt this first as it is more robust against bot protections like Cloudflare/Akamai
+        if not force_playwright:
+             # Add timeout for Selenium operations to prevent hanging
             selenium_timeout = 120.0 if site in ['meesho', 'myntra', 'ajio'] else 90.0
             try:
                 price = await asyncio.wait_for(
@@ -1650,26 +1766,58 @@ class EcommerceScraper:
             except asyncio.TimeoutError:
                 print(f"⚠️  Selenium operation timed out after {selenium_timeout}s for {site}")
                 price = 'N/A'
-            # Stop virtual display if it was started
-            if vdisplay:
-                try:
-                    vdisplay.stop()
-                except:
-                    pass
-            # For Selenium-only paths, we default to in_stock since we can't easily check without the driver
-            # Stock detection is primarily available for Playwright paths
-            stock_status = {'in_stock': True, 'stock_status': 'in_stock', 'message': None}
-            return {
-                'url': product_url,
-                'site': site,
-                'price': price if price != 'N/A' else 'N/A',
-                'status': 'success (Selenium)' if price != 'N/A' else 'Price not found',
-                'method': 'selenium',
-                'stock_status': stock_status,
-                'success': price != 'N/A'
-            }
+            except Exception as e:
+                print(f"⚠️  Selenium error: {e}")
+                price = 'N/A'
+
+            # If successful, or if force_selenium is True, return immediately
+            if (isinstance(price, dict) or (price != 'N/A' and price is not None)) or force_selenium:
+                 # Stop virtual display if it was started
+                if vdisplay:
+                    try:
+                        vdisplay.stop()
+                    except:
+                        pass
+                
+                # Handle dictionary return (Generic Selenium path)
+                if isinstance(price, dict):
+                    result_data = price
+                    extracted_price = result_data.get('price', 'N/A')
+                    stock_status = result_data.get('stock_status', {'in_stock': True, 'stock_status': 'in_stock', 'message': None})
+                    details = {k: v for k, v in result_data.items() if k not in ['price', 'stock_status']}
+                else:
+                    # Handle string return (Site-specific scrapers)
+                    extracted_price = price if price is not None else 'N/A'
+                    stock_status = {'in_stock': True, 'stock_status': 'in_stock', 'message': None}
+                    # For string returns, we don't have details, trying to fetch if possible or leave empty
+                    details = self.extract_product_details(None, site)
+
+                # Check if price is valid number (and not N/A)
+                success = extracted_price != 'N/A' and extracted_price is not None
+                
+                # If valid price but stock_status says out of stock, success might be False depending on logic
+                # But usually if price is found, we consider it partial success. 
+                # Be careful: If price is N/A, and stock is OOS, status should satisfy user.
+                
+                final_status = 'success (Selenium)' if success else 'Price not found'
+                if not success and stock_status.get('stock_status') == 'out_of_stock':
+                     final_status = 'Product is out of stock'
+                
+                return {
+                    'url': product_url,
+                    'site': site,
+                    'price': extracted_price,
+                    'status': final_status,
+                    'method': 'selenium',
+                    'stock_status': stock_status,
+                    'success': success, # Success implies price found. OOS with no price is technically success=False for price, but we found status.
+                     **details
+                }
+                    
+            print(f"  ⚠️  Selenium failed to find price, falling back to Playwright...")
         
-        # Try Playwright first
+        # SECONDARY STRATEGY: Playwright
+        # Fallback if Selenium failed or if force_playwright is True
         browser = None
         context = None
         
@@ -1688,132 +1836,122 @@ class EcommerceScraper:
                 print("⚠️  Virtual display failed, falling back to headless mode")
                 use_headed = False
             
-            browser = await playwright.chromium.launch(headless=not use_headed, env=env)
+            # Launch with heavy stealth args
+            browser = await playwright.chromium.launch(
+                headless=not use_headed, 
+                env=env,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-infobars',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-extensions',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu'
+                ]
+            )
             context = await browser.new_context(
                 ignore_https_errors=True,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={'width': 1920, 'height': 1080}
             )
+            
+            # Inject stealth scripts to hide automation
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
+            
             page = await context.new_page()
             
-            # NEW FLOW: Navigate → Capture final URL → Identify site → Extract price
+            # Navigate & Identify
             blocked = False
             try:
                 final_url, identified_site = await self.navigate_and_identify_async(page, product_url, initial_site)
                 site = identified_site  # Use the identified site from final URL
                 
-                # Check if page is blocked (common patterns) - only if navigation succeeded
+                # Check for blocking indicators
                 try:
                     page_content = await page.content()
                     page_title = await page.title()
                     
-                    # Check for Amazon "Continue shopping" page
+                    # Amazon Continue Shopping
                     if site == 'amazon' and ('continue shopping' in page_content.lower() or 'continue shopping' in page_title.lower()):
-                        print(f"  ⚠️  Amazon 'Continue shopping' page detected - may need login or different handling")
-                        # Try to navigate again or wait longer
-                        await asyncio.sleep(3)
-                        try:
-                            await page.reload(wait_until='domcontentloaded', timeout=30000)
-                            await asyncio.sleep(2)
-                            page_content = await page.content()
-                            page_title = await page.title()
-                        except:
-                            pass
+                         blocked = True
                     
-                    # Check for Nykaa 404 page
+                    # Nykaa 404
                     if site == 'nykaa' and ('ek 404' in page_title.lower() or '404' in page_title.lower()):
-                        print(f"  ⚠️  Nykaa 404 page detected - product URL may be expired or invalid")
+                        # 404 is not "blocked", it's just not found.
+                        # Return early.
+                        if context: await context.close()
+                        if browser: await browser.close()
+                        if vdisplay: 
+                            try: vdisplay.stop() 
+                            except: pass
                         return {
                             'url': product_url,
                             'site': site,
                             'price': 'N/A',
-                            'status': 'Product page not found (404) - URL may be expired',
+                            'status': 'Product page not found (404)',
                             'method': 'playwright',
-                            'error': 'Nykaa 404 page detected',
                             'stock_status': {'in_stock': False, 'stock_status': 'not_found', 'message': 'Product page not found'},
                             'success': False
                         }
-                    
-                    # Check for blocking indicators
-                    blocked = any(indicator in page_content.lower() or indicator in page_title.lower() 
-                                 for indicator in ['access denied', 'blocked', 'forbidden', 'cloudflare', 'captcha'])
-                except Exception as content_error:
-                    # If we can't get content, page might be closed or blocked
-                    print(f"  ⚠️  Could not get page content: {str(content_error)[:100]}")
+
+                    # Blocking Keywords
+                    if any(indicator in page_content.lower() or indicator in page_title.lower() 
+                            for indicator in ['access denied', 'blocked', 'forbidden', 'cloudflare', 'captcha']):
+                         blocked = True
+                         
+                except Exception:
                     blocked = True
-            except Exception as e:
-                # If navigation fails, mark as blocked
+            except Exception:
                 blocked = True
-                print(f"  ⚠️  Navigation failed: {str(e)[:100]}")
             
             if blocked:
-                # Fallback to Selenium (unless force_playwright is True)
-                if force_playwright:
-                    print(f"  ⚠️  Page blocked but force_playwright=True, continuing with Playwright...")
-                    # Wait a bit longer - sometimes the page loads after initial block
-                    print(f"  ⏳ Waiting 5 seconds for page to potentially load...")
-                    await asyncio.sleep(5)
-                    # Re-check if page is still blocked
-                    try:
-                        page_content_retry = await page.content()
-                        page_title_retry = await page.title()
-                        still_blocked = any(indicator in page_content_retry.lower() or indicator in page_title_retry.lower() 
-                                          for indicator in ['access denied', 'blocked', 'forbidden', 'cloudflare', 'captcha'])
-                        if not still_blocked:
-                            print(f"  ✅ Page loaded successfully after wait!")
-                            blocked = False
-                        else:
-                            print(f"  ⚠️  Page still blocked, but continuing with Playwright extraction...")
-                            blocked = False  # Continue anyway
-                    except Exception as retry_error:
-                        print(f"  ⚠️  Could not re-check page: {retry_error}, continuing anyway...")
-                        blocked = False  # Continue anyway
-                else:
-                    if context:
-                        await context.close()
-                    if browser:
-                        await browser.close()
-                    
-                    # Add timeout for Selenium operations to prevent hanging
-                    selenium_timeout = 120.0 if site in ['meesho', 'myntra', 'ajio'] else 90.0
-                    try:
-                        price = await asyncio.wait_for(
-                            asyncio.to_thread(self.scrape_with_selenium, product_url, site, use_virtual_display),
-                            timeout=selenium_timeout
-                        )
-                    except asyncio.TimeoutError:
-                        print(f"⚠️  Selenium operation timed out after {selenium_timeout}s for {site}")
-                        price = 'N/A'
-                    # Default stock status for Selenium fallback (can't check without page)
-                    stock_status = {'in_stock': True, 'stock_status': 'in_stock', 'message': None}
-                    return {
-                        'url': product_url,
-                        'site': site,
-                        'price': price if price != 'N/A' else 'N/A',
-                        'status': 'success (Selenium fallback)' if price != 'N/A' else 'Price not found',
-                        'method': 'selenium',
-                        'reason': 'Playwright blocked',
-                        'stock_status': stock_status,
-                        'success': price != 'N/A'
-                    }
+                 print(f"  ⚠️  Playwright blocked as well.")
+                 if context: await context.close()
+                 if browser: await browser.close()
+                 if vdisplay: 
+                    try: vdisplay.stop() 
+                    except: pass
+                 return {
+                    'url': product_url,
+                    'site': site,
+                    'price': 'N/A',
+                    'status': 'Blocked (Both Selenium and Playwright failed)',
+                    'method': 'playwright',
+                    'reason': 'Blocked',
+                    'stock_status': {'in_stock': True, 'stock_status': 'unknown', 'message': None},
+                    'success': False,
+                     **self.extract_product_details(None, site)
+                }
             
-            # Check stock status using async method
+            # If we are here, Playwright is successful (page is open).
+            # Check stock & details
             stock_status = await self.check_stock_status_async(page, site)
+            details = await self.extract_product_details_async(page, site)
             
+            # Prepare result dictionary for fall-through
+            # The 'price' field will be populated by the strategies below
             result = {
                 'url': product_url,
                 'site': site,
-                'price': 'N/A',
+                'price': None,
                 'status': 'success',
                 'method': 'playwright',
                 'stock_status': stock_status,
-                'success': False
+                'success': False # Will be updated if price found
             }
+            result.update(details)
             
-            # For hygulife: If we successfully extract a price, trust that the product is in stock
-            # (unless JSON explicitly says otherwise)
-            if site == 'hygulife' and stock_status.get('stock_status') == 'out_of_stock':
-                # Re-check: if price extraction succeeds, product is likely in stock
-                # We'll override stock status after price extraction if price is found
-                pass
+            # FALL THROUGH to extraction strategies (lines 1960+)
+            # Do NOT close browser here; it is needed for strategies.
+            # Browser will be closed in finally block at end of function.
             
             price_selectors = self.site_selectors.get(site, ['.price', '[class*="price"]', '#price'])
             
