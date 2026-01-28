@@ -13,6 +13,7 @@ browser_data/
 
 # Results
 *.json
+!selectors.json
 !requirements.txt
 price_results.json
 

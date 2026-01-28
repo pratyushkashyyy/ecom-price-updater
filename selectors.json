@@ -1,0 +1,145 @@
+{
+    "amazon": {
+        "price_selectors": [
+            ".a-price.priceToPay .a-offscreen",
+            "#corePrice_desktop .a-offscreen"
+        ],
+        "name_selectors": [
+            "#productTitle"
+        ],
+        "image_selectors": [
+            "#landingImage",
+            "#imgBlkFront"
+        ],
+        "out_of_stock": [
+            "Currently unavailable",
+            "Out of stock"
+        ]
+    },
+    "flipkart": {
+        "price_selectors": [
+            ".Nx9bqj",
+            "._30jeq3"
+        ],
+        "name_selectors": [
+            "h1",
+            ".yhB1nd",
+            ".B_NuCI",
+            ".VU-ZEz",
+            "[class*='PROD_NAME']"
+        ],
+        "image_selectors": [
+            "img._396cs4",
+            "img._2r_T1I",
+            "img.DByuf4",
+            "img[alt^='Product']"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Currently Unavailable"
+        ]
+    },
+    "myntra": {
+        "price_selectors": [
+            ".pdp-price strong"
+        ],
+        "name_selectors": [
+            ".pdp-title",
+            ".pdp-name"
+        ],
+        "image_selectors": [
+            ".image-grid-image"
+        ],
+        "out_of_stock": [
+            "Out of Stock"
+        ]
+    },
+    "meesho": {
+        "price_selectors": [
+            "h4"
+        ],
+        "name_selectors": [
+            ".pdp-name",
+            "[class*='ProductDescription__Name']"
+        ],
+        "image_selectors": [
+            "img[alt='Product Image']",
+            ".pdp-image"
+        ],
+        "out_of_stock": [
+            "Out of Stock",
+            "Sold Out"
+        ]
+    },
+    "nykaa": {
+        "price_selectors": [
+            ".css-1jczs19"
+        ],
+        "name_selectors": [
+            "h1.css-1gc4x7i",
+            "h1"
+        ],
+        "image_selectors": [
+            ".css-11j9k5x"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "ajio": {
+        "price_selectors": [
+            ".prod-sp"
+        ],
+        "name_selectors": [
+            "h1.prod-name"
+        ],
+        "image_selectors": [
+            ".img-alignment",
+            "img.rilrtl-lazy-img"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "snapdeal": {
+        "price_selectors": [
+            ".payBlkBig"
+        ],
+        "name_selectors": [
+            "h1.pdp-e-i-head"
+        ],
+        "image_selectors": [
+            ".cloudzoom"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "shopclues": {
+        "price_selectors": [
+            ".f_price"
+        ],
+        "name_selectors": [
+            "h1[itemprop='name']"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "hyugalife": {
+        "price_selectors": [
+            ".special-price-container"
+        ],
+        "name_selectors": [
+            "h1.text-2xl"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    }
+}

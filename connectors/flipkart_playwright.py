@@ -27,7 +27,47 @@ class FlipkartPlaywrightConnector(BaseConnector):
     async def extract_price_playwright(self, page, url: str) -> Optional[str]:
         """Extract Flipkart price using Playwright"""
         import re
+        import json
         
+        # Priority 1: Try JSON-LD structured data (most reliable)
+        try:
+            json_ld_scripts = await page.query_selector_all('script[type="application/ld+json"]')
+            for script in json_ld_scripts:
+                try:
+                    content = await script.text_content()
+                    if content:
+                        data = json.loads(content)
+                        
+                        # Handle both single object and array of objects
+                        items = [data] if isinstance(data, dict) else data if isinstance(data, list) else []
+                        
+                        for item in items:
+                            # Check for Product schema
+                            if item.get('@type') == 'Product' or item.get('type') == 'Product':
+                                # Try offers.price
+                                if 'offers' in item:
+                                    offers = item['offers']
+                                    if isinstance(offers, dict):
+                                        price = offers.get('price')
+                                        if price:
+                                            cleaned = self.clean_price(str(price))
+                                            if cleaned != "N/A" and self.is_valid_price(cleaned):
+                                                print(f"  ✓ Found JSON-LD price: ₹{cleaned}")
+                                                return cleaned
+                                    elif isinstance(offers, list):
+                                        for offer in offers:
+                                            price = offer.get('price')
+                                            if price:
+                                                cleaned = self.clean_price(str(price))
+                                                if cleaned != "N/A" and self.is_valid_price(cleaned):
+                                                    print(f"  ✓ Found JSON-LD price: ₹{cleaned}")
+                                                    return cleaned
+                except (json.JSONDecodeError, KeyError, AttributeError):
+                    continue
+        except Exception as e:
+            print(f"  ⚠️  JSON-LD extraction failed: {e}")
+        
+        # Priority 2: Try CSS selectors (fallback)
         # Try each selector
         for selector in self.price_selectors:
             try:

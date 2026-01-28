@@ -879,6 +879,7 @@ class EcommerceScraper:
             options = uc.ChromeOptions()
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
+            options.page_load_strategy = 'eager'  # Load faster - return when DOM is ready, not all assets
             
             if use_virtual_display and vdisplay:
                 # Configure for virtual display (no headless needed)
@@ -888,7 +889,7 @@ class EcommerceScraper:
                 except ImportError:
                     pass
             
-            driver = uc.Chrome(options=options, version_main=None)
+            driver = uc.Chrome(options=options, version_main=143)
             
             try:
                 price_value = 'N/A'
@@ -899,7 +900,7 @@ class EcommerceScraper:
                 site = identified_site  # Use the identified site from final URL
                 
                 # Reduce wait timeout to prevent hanging - use shorter waits
-                wait = WebDriverWait(driver, 10)  # Reduced from 15 to 10 seconds
+                wait = WebDriverWait(driver, 5)  # Reduced from 10 to 5 seconds for faster scraping
                 
                 # Site-specific selectors based on identified site
                 if site == 'amazon':
@@ -1518,10 +1519,10 @@ class EcommerceScraper:
             print(f"  🔄 Bitli short URL detected - waiting for redirects...")
             try:
                 # Start navigation with domcontentloaded
-                await page.goto(product_url, timeout=90000, wait_until='domcontentloaded')
+                await page.goto(product_url, timeout=45000, wait_until='domcontentloaded')  # Reduced from 90s to 45s
                 
                 # Wait for redirects to complete by checking if URL stabilizes
-                max_redirect_wait = 20  # Maximum seconds to wait for redirects
+                max_redirect_wait = 12  # Reduced from 20s to 12s for faster scraping
                 redirect_check_interval = 0.5
                 max_checks = int(max_redirect_wait / redirect_check_interval)
                 
@@ -1560,11 +1561,11 @@ class EcommerceScraper:
             print(f"  🔄 Myntra short URL detected - waiting for multiple redirects...")
             try:
                 # Start navigation with domcontentloaded (faster initial load)
-                await page.goto(product_url, timeout=90000, wait_until='domcontentloaded')
+                await page.goto(product_url, timeout=45000, wait_until='domcontentloaded')  # Reduced from 90s to 45s
                 
                 # Wait for redirects to complete by checking if URL stabilizes
                 # Myntra can have 3-4+ redirects, so we need to wait for URL to stop changing
-                max_redirect_wait = 30  # Maximum seconds to wait for redirects
+                max_redirect_wait = 15  # Reduced from 30s to 15s for faster scraping
                 redirect_check_interval = 0.5  # Check every 0.5 seconds
                 max_checks = int(max_redirect_wait / redirect_check_interval)
                 
@@ -1826,8 +1827,8 @@ class EcommerceScraper:
             import os
             env = os.environ.copy()
             # Only use headed mode if virtual display is actually active
-            # If virtual display was requested but failed, fall back to headless
-            use_headed = False
+            # If use_virtual_display is False, assume we want headed mode (e.g. Windows desktop)
+            use_headed = not use_virtual_display
             if use_virtual_display and vdisplay and vdisplay.is_active:
                 env['DISPLAY'] = vdisplay.display_var
                 use_headed = True
@@ -1859,11 +1860,61 @@ class EcommerceScraper:
                 viewport={'width': 1920, 'height': 1080}
             )
             
-            # Inject stealth scripts to hide automation
+            # Inject comprehensive stealth scripts to hide automation
             await context.add_init_script("""
+                // Mask webdriver property
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
+                
+                // Mock chrome runtime
+                window.chrome = {
+                    runtime: {}
+                };
+                
+                // Mock permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+                
+                // Add realistic plugins
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        {
+                            0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
+                            description: "Portable Document Format",
+                            filename: "internal-pdf-viewer",
+                            length: 1,
+                            name: "Chrome PDF Plugin"
+                        },
+                        {
+                            0: {type: "application/pdf", suffixes: "pdf", description: "Portable Document Format"},
+                            description: "Portable Document Format", 
+                            filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
+                            length: 1,
+                            name: "Chrome PDF Viewer"
+                        },
+                        {
+                            0: {type: "application/x-nacl", suffixes: "", description: "Native Client Executable"},
+                            1: {type: "application/x-pnacl", suffixes: "", description: "Portable Native Client Executable"},
+                            description: "Native Client",
+                            filename: "internal-nacl-plugin",
+                            length: 2,
+                            name: "Native Client"
+                        }
+                    ]
+                });
+                
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+                
+                // Remove automation-controlled flag
+                delete navigator.__proto__.webdriver;
             """)
             
             page = await context.new_page()
