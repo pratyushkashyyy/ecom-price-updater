@@ -15,7 +15,7 @@ import os
 import threading
 from datetime import datetime
 from dotenv import load_dotenv
-from scrape_prices import scrape_price
+
 from playwright.async_api import async_playwright
 from product_price import EcommerceScraper
 
@@ -329,14 +329,21 @@ def get_price():
             # Format response
             stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
             
-            if result.get('price') and result['price'] != 'N/A' and result['price'] is not None:
+            if (result.get('price') and result['price'] != 'N/A' and result['price'] is not None) or \
+               (result.get('name') and result['name'] != 'N/A' and result['name'] is not None):
                 logger.info(f"✅ Success: Price ₹{result['price']} fetched in {elapsed_time:.2f}s")
+                
+                # Extract details safely
+                details = result.get('details', {})
+                name = result.get('name') or details.get('name')
+                image_url = result.get('image_url') or details.get('image_url')
+
                 response_data = {
                     'success': True,
                     'url': result['url'],
                     'price': result['price'],
-                    'name': result.get('name'),
-                    'image_url': result.get('image_url'),
+                    'name': name,
+                    'image_url': image_url,
                     'site': result['site'],
                     'method': result.get('method', 'unknown'),
                     'status': result.get('status', 'success'),
@@ -509,12 +516,18 @@ def get_prices_batch():
                     failed_count += 1
                 
                 stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
+                
+                # Extract details safely for batch
+                details = result.get('details', {})
+                name = result.get('name') or details.get('name')
+                image_url = result.get('image_url') or details.get('image_url')
+                
                 formatted_result = {
                     'success': success,
                     'url': result.get('url', valid_urls[i] if i < len(valid_urls) else 'unknown'),
                     'price': result.get('price') if result.get('price') != 'N/A' else None,
-                    'name': result.get('name'),
-                    'image_url': result.get('image_url'),
+                    'name': name,
+                    'image_url': image_url,
                     'site': result.get('site', 'unknown'),
                     'method': result.get('method', 'unknown'),
                     'status': result.get('status', 'unknown'),
@@ -633,4 +646,3 @@ if __name__ == '__main__':
     logger.info("🚀 Starting Price Scraper API server")
     
     app.run(debug=debug_mode, host=host, port=port, threaded=True)
-

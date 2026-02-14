@@ -3,6 +3,7 @@ E-commerce scrapers module
 Each website has its own scraper file
 """
 from .base_scraper import BaseScraper
+from .browser_adapter import BrowserAdapter, BrowserElement
 from .amazon_scraper import AmazonScraper
 from .flipkart_scraper import FlipkartScraper
 from .myntra_scraper import MyntraScraper
@@ -30,6 +31,8 @@ SCRAPER_MAP = {
 
 __all__ = [
     'BaseScraper',
+    'BrowserAdapter',
+    'BrowserElement',
     'AmazonScraper',
     'FlipkartScraper',
     'MyntraScraper',

@@ -1,10 +1,19 @@
-playwright
-flask
-flask-cors
-psutil
-undetected-chromedriver
-selenium
-setuptools
-python-dotenv
-psycopg2-binary
-httpx
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Browser Automation
+playwright==1.40.0
+playwright-stealth==1.0.6
+selenium==4.16.0
+webdriver-manager==4.0.1
+
+# HTTP Clients
+requests==2.31.0
+httpx==0.25.2
+
+# Database
+psycopg2-binary==2.9.9
+
+# Environment Variables
+python-dotenv==1.0.0

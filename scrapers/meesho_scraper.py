@@ -2,12 +2,8 @@
 Meesho scraper
 """
 from typing import Dict, Optional
-from playwright.async_api import Page
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from .base_scraper import BaseScraper
+from .browser_adapter import BrowserAdapter
 
 
 class MeeshoScraper(BaseScraper):
@@ -32,57 +28,48 @@ class MeeshoScraper(BaseScraper):
     
     def get_price_selectors(self) -> list:
         return [
+            '[class*="Price__CurrentPrice"]',
             '.pdp-price',
             '[class*="pdp-price"]',
             'span[class*="price"]',
             'div[class*="price"]',
             '[data-price]',
-            '.price',
+            'h4',
         ]
     
-    async def extract_price_playwright(self, page: Page) -> Optional[str]:
-        """Extract price from Meesho using Playwright"""
-        selectors = ['.pdp-price', '[data-price]', '.price']
+    async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
+        """Extract price from Meesho with robust fallback"""
+        
+        # 1. Try specific selectors
+        selectors = [
+            '[class*="Price__CurrentPrice"]', 
+            '.pdp-price', 
+            '[data-price]', 
+            'h4'
+        ]
         
         for selector in selectors:
             try:
-                element = await page.query_selector(selector, timeout=2000)
-                if element:
-                    price_text = (await element.text_content()).strip()
-                    cleaned_price = self.clean_price(price_text)
-                    if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                        try:
-                            price_float = float(cleaned_price.replace(',', ''))
-                            if price_float >= 50:
-                                return cleaned_price
-                        except:
-                            pass
+                elements = await browser.query_selector_all(selector)
+                for el in elements:
+                    text = await browser.get_text(el)
+                    if '₹' in text:
+                        cleaned = self.clean_price(text)
+                        if cleaned != "N/A" and self.is_valid_price(cleaned):
+                            return cleaned
             except:
                 continue
+                
+        # 2. Text-based fallback (scan common elements for ₹)
+        try:
+            candidates = await browser.query_selector_all('h4, h5, h3, span, div')
+            for candidate in candidates[:50]:
+                text = await browser.get_text(candidate)
+                if '₹' in text and len(text) < 20:
+                    cleaned = self.clean_price(text)
+                    if cleaned != "N/A" and self.is_valid_price(cleaned):
+                        return cleaned
+        except:
+            pass
         
         return None
-    
-    def extract_price_selenium(self, driver: WebDriver) -> Optional[str]:
-        """Extract price from Meesho using Selenium"""
-        wait = WebDriverWait(driver, 10)
-        selectors = ['.pdp-price', '[data-price]', '.price']
-        
-        for selector in selectors:
-            try:
-                element = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                text = element.text.strip()
-                cleaned_price = self.clean_price(text)
-                if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                    try:
-                        price_float = float(cleaned_price.replace(',', ''))
-                        if price_float >= 50:
-                            return cleaned_price
-                    except:
-                        pass
-            except:
-                continue
-        
-        return None
-

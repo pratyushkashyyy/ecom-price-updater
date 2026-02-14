@@ -1,17 +1,13 @@
 """
-Generic scraper for unknown/unhandled e-commerce sites
+Generic scraper for unknown sites
 """
 from typing import Dict, Optional
-from playwright.async_api import Page
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from .base_scraper import BaseScraper
+from .browser_adapter import BrowserAdapter
 
 
 class GenericScraper(BaseScraper):
-    """Generic scraper for sites without specific implementation"""
+    """Generic scraper for any e-commerce site"""
     
     def get_site_name(self) -> str:
         return 'generic'
@@ -22,67 +18,57 @@ class GenericScraper(BaseScraper):
                 'out of stock',
                 'sold out',
                 'currently unavailable',
-                'unavailable'
+                'unavailable',
+                'temporarily out of stock'
             ],
             'selectors': [
                 '[class*="out-of-stock"]',
                 '[class*="sold-out"]',
-                '.sold-out'
+                '[class*="unavailable"]',
+                '.sold-out',
+                '.out-of-stock'
             ]
         }
     
     def get_price_selectors(self) -> list:
         return [
+            '[itemprop="price"]',
             '.price',
-            '[class*="price"]',
-            '#price',
+            '.product-price',
+            '.offer-price',
+            '.sale-price',
             '[data-price]',
-            '[id*="price"]',
+            '.current-price'
         ]
     
-    async def extract_price_playwright(self, page: Page) -> Optional[str]:
-        """Extract price using generic selectors"""
-        selectors = ['.price', '[class*="price"]', '#price', '[data-price]']
-        
-        for selector in selectors:
+    async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
+        """Extract price generically"""
+        # Try generic selectors
+        for selector in self.price_selectors:
             try:
-                element = await page.query_selector(selector, timeout=2000)
-                if element:
-                    price_text = (await element.text_content()).strip()
-                    cleaned_price = self.clean_price(price_text)
-                    if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                        try:
-                            price_float = float(cleaned_price.replace(',', ''))
-                            if price_float >= 10:
-                                return cleaned_price
-                        except:
-                            pass
+                elements = await browser.query_selector_all(selector)
+                for el in elements:
+                    text = await browser.get_text(el)
+                    cleaned = self.clean_price(text)
+                    if cleaned != "N/A" and self.is_valid_price(cleaned):
+                        return cleaned
             except:
                 continue
         
+        # Try meta tags
+        try:
+            meta = await browser.query_selector('meta[property="product:price:amount"]')
+            if meta:
+                price = await browser.get_attribute(meta, 'content')
+                if price:
+                    return price
+            
+            meta = await browser.query_selector('meta[property="og:price:amount"]')
+            if meta:
+                price = await browser.get_attribute(meta, 'content')
+                if price:
+                    return price
+        except:
+            pass
+            
         return None
-    
-    def extract_price_selenium(self, driver: WebDriver) -> Optional[str]:
-        """Extract price using generic selectors"""
-        wait = WebDriverWait(driver, 10)
-        selectors = ['.price', '[class*="price"]', '#price', '[data-price]']
-        
-        for selector in selectors:
-            try:
-                element = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                text = element.text.strip()
-                cleaned_price = self.clean_price(text)
-                if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                    try:
-                        price_float = float(cleaned_price.replace(',', ''))
-                        if price_float >= 10:
-                            return cleaned_price
-                    except:
-                        pass
-            except:
-                continue
-        
-        return None
-

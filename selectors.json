@@ -1,0 +1,218 @@
+{
+    "amazon": {
+        "search_input": "input[name=\"field-keywords\"]",
+        "product_card": "div[data-component-type=\"s-search-result\"]",
+        "product": {
+            "title": [
+                "h2 a span.a-text-normal",
+                "a h2 span.a-text-normal",
+                "a h2.a-text-normal span",
+                "h2.a-text-normal span",
+                "a span.a-text-normal"
+            ],
+            "price": {
+                "standard": ".a-price .a-offscreen",
+                "whole": ".a-price-whole",
+                "fraction": ".a-price-fraction",
+                "fallback_simple": "span.a-price:not([data-a-size=\"mini\"]) span.a-offscreen",
+                "fallback_color": "span.a-color-price, div[data-cy=\"secondary-offer-recipe\"] .a-color-base"
+            },
+            "rating": [
+                "i[class*=\"a-icon-star\"] span.a-icon-alt",
+                "span[aria-label*=\"out of 5 stars\"]",
+                "i[aria-label*=\"out of 5 stars\"]"
+            ],
+            "image": "img.s-image",
+            "link": [
+                "div[data-cy=\"title-recipe\"] > a",
+                "h2 a",
+                "a:has(h2)",
+                ".a-link-normal.s-underline-text",
+                "a[href*=\"/dp/\"]"
+            ]
+        },
+        "product_detail": {
+            "title": "#productTitle",
+            "price": {
+                "discounted_block": ".priceToPay",
+                "discounted_whole": ".priceToPay .a-price-whole",
+                "discounted_offscreen": ".priceToPay .a-offscreen",
+                "main": ".a-price:not(.a-text-price) .a-offscreen",
+                "whole": ".a-price-whole",
+                "fraction": ".a-price-fraction",
+                "apex": "#corePrice_feature_div .a-price:not(.a-text-price) .a-offscreen",
+                "desktop_unified": "#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen",
+                "swatch_price": "span.twister_swatch_price"
+            },
+            "rating": {
+                "popover": "#acrPopover",
+                "text": "#acrCustomerReviewText",
+                "average": "i[data-hook='average-star-rating'] span"
+            },
+            "image": {
+                "main": "#landingImage",
+                "wrapper": "#imgTagWrapperId img",
+                "large": "#largeImage"
+            }
+        },
+        "pagination": {
+            "next_button": [
+                "a.s-pagination-next",
+                ".s-pagination-next"
+            ]
+        },
+        "out_of_stock": [
+            "Currently unavailable",
+            "Out of stock",
+            "Temporarily out of stock",
+            "We don't know when or if this item will be back in stock"
+        ]
+    },
+    "flipkart": {
+        "price_selectors": [
+            ".Nx9bqj",
+            "._30jeq3",
+            "._16Jk6d",
+            "._1vC4OE",
+            "._3qQ9m1",
+            ".css-146c3p1",
+            "[class*='css-146c3p1']"
+        ],
+        "name_selectors": [
+            "h1",
+            "h2",
+            "[data-testid*='title']",
+            "[data-testid*='name']",
+            "div[class*='title']",
+            "span[class*='title']",
+            ".yhB1nd",
+            ".B_NuCI",
+            ".VU-ZEz"
+        ],
+        "image_selectors": [
+            "img[src*='rukminim']",
+            "img[src*='flixcart']",
+            "img._396cs4",
+            "img._2r_T1I",
+            "img.DByuf4",
+            "img[alt*='Product']",
+            "img[data-testid*='image']"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Currently Unavailable"
+        ]
+    },
+    "myntra": {
+        "price_selectors": [
+            ".pdp-price strong",
+            ".pdp-selling-price",
+            "[class*='pdp-price'] strong",
+            ".pdp-discounted-price"
+        ],
+        "name_selectors": [
+            ".pdp-title",
+            ".pdp-name",
+            "h1.pdp-title",
+            "h1.pdp-name"
+        ],
+        "image_selectors": [
+            ".image-grid-image",
+            ".image-grid-container img",
+            "div.image-grid-image"
+        ],
+        "out_of_stock": [
+            "Out of Stock",
+            "Sold Out",
+            "Currently unavailable"
+        ]
+    },
+    "meesho": {
+        "price_selectors": [
+            "h4"
+        ],
+        "name_selectors": [
+            ".pdp-name",
+            "[class*='ProductDescription__Name']"
+        ],
+        "image_selectors": [
+            "img[alt='Product Image']",
+            ".pdp-image"
+        ],
+        "out_of_stock": [
+            "Out of Stock",
+            "Sold Out"
+        ]
+    },
+    "nykaa": {
+        "price_selectors": [
+            ".css-1jczs19"
+        ],
+        "name_selectors": [
+            "h1.css-1gc4x7i",
+            "h1"
+        ],
+        "image_selectors": [
+            ".css-11j9k5x"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "ajio": {
+        "price_selectors": [
+            ".prod-sp"
+        ],
+        "name_selectors": [
+            "h1.prod-name"
+        ],
+        "image_selectors": [
+            ".img-alignment",
+            "img.rilrtl-lazy-img"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "snapdeal": {
+        "price_selectors": [
+            ".payBlkBig"
+        ],
+        "name_selectors": [
+            "h1.pdp-e-i-head"
+        ],
+        "image_selectors": [
+            ".cloudzoom"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "shopclues": {
+        "price_selectors": [
+            ".f_price"
+        ],
+        "name_selectors": [
+            "h1[itemprop='name']"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    },
+    "hyugalife": {
+        "price_selectors": [
+            ".special-price-container"
+        ],
+        "name_selectors": [
+            "h1.text-2xl"
+        ],
+        "out_of_stock": [
+            "Sold Out",
+            "Out of Stock"
+        ]
+    }
+}

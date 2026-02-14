@@ -2,12 +2,8 @@
 Shopclues scraper
 """
 from typing import Dict, Optional
-from playwright.async_api import Page
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from .base_scraper import BaseScraper
+from .browser_adapter import BrowserAdapter
 
 
 class ShopcluesScraper(BaseScraper):
@@ -38,15 +34,15 @@ class ShopcluesScraper(BaseScraper):
             '[class*="price"]'
         ]
     
-    async def extract_price_playwright(self, page: Page) -> Optional[str]:
-        """Extract price from Shopclues using Playwright"""
+    async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
+        """Extract price from Shopclues"""
         selectors = ['.f_price', '.price']
         
         for selector in selectors:
             try:
-                element = await page.query_selector(selector, timeout=2000)
-                if element:
-                    price_text = (await element.text_content()).strip()
+                el = await browser.query_selector(selector)
+                if el:
+                    price_text = await browser.get_text(el)
                     cleaned_price = self.clean_price(price_text)
                     if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                         try:
@@ -59,28 +55,3 @@ class ShopcluesScraper(BaseScraper):
                 continue
         
         return None
-    
-    def extract_price_selenium(self, driver: WebDriver) -> Optional[str]:
-        """Extract price from Shopclues using Selenium"""
-        wait = WebDriverWait(driver, 10)
-        selectors = ['.f_price', '.price']
-        
-        for selector in selectors:
-            try:
-                element = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                text = element.text.strip()
-                cleaned_price = self.clean_price(text)
-                if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                    try:
-                        price_float = float(cleaned_price.replace(',', ''))
-                        if price_float >= 50:
-                            return cleaned_price
-                    except:
-                        pass
-            except:
-                continue
-        
-        return None
-

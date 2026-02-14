@@ -7,12 +7,14 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv
 
 # Browser data
 browser_data/
 
 # Results
 *.json
+!selectors.json
 !requirements.txt
 price_results.json
 

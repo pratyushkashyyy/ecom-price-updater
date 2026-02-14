@@ -1,13 +1,10 @@
 """
 Myntra scraper
 """
+import re
 from typing import Dict, Optional
-from playwright.async_api import Page
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from .base_scraper import BaseScraper
+from .browser_adapter import BrowserAdapter
 
 
 class MyntraScraper(BaseScraper):
@@ -40,20 +37,77 @@ class MyntraScraper(BaseScraper):
             '[class*="price"]'
         ]
     
-    async def extract_price_playwright(self, page: Page) -> Optional[str]:
-        """Extract price from Myntra using Playwright"""
-        selectors = ['.pdp-price', '.pdp-discounted-price', '.pdp-mrp']
+    async def extract_product_details(self, browser: BrowserAdapter) -> Dict:
+        """Extract product details from Myntra"""
+        details = {
+            'name': None,
+            'image_url': None,
+            'rating': None,
+            'review_count': None
+        }
+        
+        # Name — Myntra has brand (.pdp-title) + product name (.pdp-name)
+        try:
+            brand_el = await browser.query_selector('.pdp-title')
+            name_el = await browser.query_selector('.pdp-name')
+            
+            brand = await browser.get_inner_text(brand_el) if brand_el else ""
+            name = await browser.get_inner_text(name_el) if name_el else ""
+            
+            if brand and name:
+                details['name'] = f"{brand} {name}"
+            elif name:
+                details['name'] = name
+            elif brand:
+                details['name'] = brand
+        except:
+            pass
+
+        # Image — Myntra uses divs with background-image
+        try:
+            imgs = await browser.query_selector_all('.image-grid-image')
+            for img in imgs:
+                style = await browser.get_attribute(img, 'style')
+                if style and 'background-image' in style:
+                    match = re.search(r'url\("?\'?([^"\')]+)"?\'?\)', style)
+                    if match:
+                        details['image_url'] = self.clean_image_url(match.group(1))
+                        break
+            
+            # Fallback to img tags
+            if not details['image_url']:
+                img_el = await browser.query_selector('.image-grid-container img')
+                if img_el:
+                    src = await browser.get_attribute(img_el, 'src')
+                    if src:
+                        details['image_url'] = self.clean_image_url(src)
+        except:
+            pass
+             
+        # Rating
+        try:
+            rating_el = await browser.query_selector('.index-overallRating div')
+            if rating_el:
+                details['rating'] = await browser.get_inner_text(rating_el)
+        except:
+            pass
+
+        return details
+
+    async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
+        """Extract price from Myntra"""
+        selectors = self.price_selectors
         
         for selector in selectors:
             try:
-                element = await page.query_selector(selector, timeout=2000)
-                if element:
-                    price_text = (await element.text_content()).strip()
+                el = await browser.query_selector(selector)
+                if el:
+                    price_text = await browser.get_text(el)
                     cleaned_price = self.clean_price(price_text)
                     if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
                         try:
                             price_float = float(cleaned_price.replace(',', ''))
-                            if price_float >= 50:
+                            if price_float >= 10:
                                 return cleaned_price
                         except:
                             pass
@@ -61,28 +115,3 @@ class MyntraScraper(BaseScraper):
                 continue
         
         return None
-    
-    def extract_price_selenium(self, driver: WebDriver) -> Optional[str]:
-        """Extract price from Myntra using Selenium"""
-        wait = WebDriverWait(driver, 10)
-        selectors = ['.pdp-price', '.pdp-discounted-price', '.pdp-mrp']
-        
-        for selector in selectors:
-            try:
-                element = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                text = element.text.strip()
-                cleaned_price = self.clean_price(text)
-                if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                    try:
-                        price_float = float(cleaned_price.replace(',', ''))
-                        if price_float >= 50:
-                            return cleaned_price
-                    except:
-                        pass
-            except:
-                continue
-        
-        return None
-
