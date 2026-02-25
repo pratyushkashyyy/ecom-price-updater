@@ -42,6 +42,30 @@ class NykaaScraper(BaseScraper):
     async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
         """Extract price from Nykaa with multi-strategy approach"""
         
+        # SMART WAIT: Wait dynamically for the redirect and the product title (h1) to load
+        try:
+            if browser.engine == 'playwright':
+                # Wait up to 6 seconds for the main product title to render
+                await browser.page.wait_for_selector('h1', timeout=6000)
+                # Give React one extra second to inject the price after the title appears
+                import asyncio
+                await asyncio.sleep(1)
+            else:
+                import asyncio
+                await asyncio.sleep(4)
+        except Exception as e:
+            print(f"  Nykaa dynamic wait failed: {e}")
+            pass
+        
+        # DEAD LINK PROTECTION: Stop if Nykaa shows the 404 text
+        try:
+            page_content = await browser.get_page_content()
+            if "couldn't find the product" in page_content.lower():
+                 print("  ⚠️ NYKAA 404 DETECTED - Dead Link!")
+                 return None
+        except:
+            pass
+        
         # Strategy 1: Try specific selectors
         selectors = [
             '.css-1jczs19',

@@ -108,19 +108,29 @@ class EcommerceScraper:
         
         # ── PLAYWRIGHT ATTEMPT ──
         try:
-            print(f"  Launching Playwright browser (Chrome channel)...")
+            # FAST-TRACK: Skip Playwright instantly for sites with heavy firewalls
+            if site in ['myntra','nykaa']:
+                raise Exception(f"{site.capitalize()} firewall detected. Fast-tracking to Selenium!")
+                
+            print(f"  Launching Playwright browser...")
+            
             browser = await playwright.chromium.launch(
-                headless=False,
-                channel="chrome",
-                args=PLAYWRIGHT_ARGS
+                headless=not use_virtual_display,
+                args=['--disable-blink-features=AutomationControlled']
             )
             
-            # Create context with realistic fingerprint
-            context_options = PLAYWRIGHT_CONTEXT_OPTIONS.copy()
-            context_options['user_agent'] = self.get_random_user_agent()
-            context = await browser.new_context(**context_options)
+            # THE GOOGLEBOT VIP PASS
+            # Use Googlebot UA for strict firewalls, otherwise use normal random UA
+            googlebot_ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+            current_ua = googlebot_ua if site in ['meesho', 'ajio','nykaa'] else self.get_random_user_agent()
+            
+            context = await browser.new_context(
+                user_agent=current_ua,
+                viewport={'width': 1920, 'height': 1080}
+            )
             
             page = await context.new_page()
+            await stealth_async(page)
             
             # Apply Stealth plugin
             try:
@@ -136,8 +146,11 @@ class EcommerceScraper:
 
             # Navigate and wait for redirects to settle
             try:
-                await page.goto(url, timeout=60000, wait_until='networkidle')
-                await asyncio.sleep(8)  # Wait for JS to render content (Flipkart, etc.)
+                # SPEED HACK: Strict 15-second cutoff for Snapdeal/Amazon
+                if site in ['amazon', 'snapdeal']:
+                    await page.goto(url, timeout=15000, wait_until='domcontentloaded')
+                else:
+                    await page.goto(url, timeout=30000, wait_until='domcontentloaded')
                 
                 # Check if a new tab/page was opened (some short links do this)
                 if len(context.pages) > 1:
@@ -163,14 +176,7 @@ class EcommerceScraper:
                 scraper = ScraperFactory.get_scraper(final_url)
                 
                 # Flipkart-specific: Wait for price elements to load (they render via JS)
-                if site == 'flipkart':
-                    try:
-                        print("  Waiting for Flipkart price elements to render...")
-                        await page.wait_for_selector('.Nx9bqj, .Cx5lGj, ._30jeq3, ._16Jk6d', timeout=15000)
-                        print("  Price elements detected!")
-                    except Exception as e:
-                        print(f"  Price elements didn't load in 15s, proceeding anyway: {e}")
-
+                
                 # DEBUG: Save HTML to file
                 try:
                     content = await page.content()
@@ -213,6 +219,9 @@ class EcommerceScraper:
             options.add_argument(arg)
         options.add_argument(f"user-agent={self.get_random_user_agent()}")
         
+        # --- THE MAGIC STEALTH FLAG ---
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        
         # Hide automation flags
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
@@ -225,9 +234,11 @@ class EcommerceScraper:
             )
             
             driver.get(original_url)
-            time.sleep(10)  # Wait for redirects in Selenium
+            driver.implicitly_wait(3) # Wait up to 3 seconds for elements
+            time.sleep(1)  # Only sleep 1 second for standard redirects, not 10!
             
             final_url = driver.current_url
+
             print(f"  Selenium resolved URL to: {final_url}")
             result['url'] = final_url
             

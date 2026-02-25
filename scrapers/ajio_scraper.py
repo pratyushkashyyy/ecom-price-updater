@@ -27,20 +27,15 @@ class AjioScraper(BaseScraper):
             ]
         }
     
-    def get_price_selectors(self) -> list:
-        return [
-            '.prod-sp',
-            'span[class*="prod-sp"]',
-            '.prod-base-price',
-            'span[class*="price"]',
-            '[class*="prod-base-price"]',
-            '[data-id="price"]',
-            '.price',
-        ]
-    
     async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
         """Extract price from Ajio"""
-        selectors = ['.prod-sp', '.prod-base-price', '[data-id="price"]', '.price']
+        
+        # UNIVERSAL WAIT: Give Ajio's React JS exactly 3 seconds to render the price
+        import asyncio
+        await asyncio.sleep(3)
+
+        # Pull selectors dynamically from selectors.json
+        selectors = self.price_selectors 
         
         for selector in selectors:
             try:
