@@ -43,7 +43,11 @@ class FlipkartScraper(BaseScraper):
     
     async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
         """Extract price from Flipkart/Shopsy using JSON-LD first, then CSS selectors"""
-        # Check for error page first
+        
+        # 1. Give Flipkart's JS exactly 3 seconds to render the price on the screen
+        await asyncio.sleep(3)
+        
+        # 2. Check for error page first
         try:
             page_content = await browser.get_page_content()
             if "Something went wrong" in page_content and "Please try again later" in page_content:

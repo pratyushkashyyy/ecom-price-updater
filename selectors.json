@@ -70,6 +70,9 @@
     },
     "flipkart": {
         "price_selectors": [
+            ".v1zwn21j",
+            "._1psv1zeb9",
+            ".hl05eU",
             ".Nx9bqj",
             "._30jeq3",
             "._16Jk6d",
@@ -103,8 +106,9 @@
             "Currently Unavailable"
         ]
     },
-    "myntra": {
+   "myntra": {
         "price_selectors": [
+            "span.pdp-price > strong",
             ".pdp-price strong",
             ".pdp-selling-price",
             "[class*='pdp-price'] strong",
@@ -129,19 +133,11 @@
     },
     "meesho": {
         "price_selectors": [
-            "h4"
-        ],
-        "name_selectors": [
-            ".pdp-name",
-            "[class*='ProductDescription__Name']"
-        ],
-        "image_selectors": [
-            "img[alt='Product Image']",
-            ".pdp-image"
-        ],
-        "out_of_stock": [
-            "Out of Stock",
-            "Sold Out"
+            "h4",
+            "[class*='Price__CurrentPrice']",
+            "[class*='ProductPrice']",
+            ".pdp-price",
+            "[data-price]"
         ]
     },
     "nykaa": {
@@ -162,33 +158,20 @@
     },
     "ajio": {
         "price_selectors": [
-            ".prod-sp"
-        ],
-        "name_selectors": [
-            "h1.prod-name"
-        ],
-        "image_selectors": [
-            ".img-alignment",
-            "img.rilrtl-lazy-img"
-        ],
-        "out_of_stock": [
-            "Sold Out",
-            "Out of Stock"
+            ".prod-sp",
+            ".prod-cp",
+            "span[class*='prod-sp']",
+            ".prod-base-price",
+            "[data-id='price']"
         ]
     },
     "snapdeal": {
         "price_selectors": [
-            ".payBlkBig"
-        ],
-        "name_selectors": [
-            "h1.pdp-e-i-head"
-        ],
-        "image_selectors": [
-            ".cloudzoom"
-        ],
-        "out_of_stock": [
-            "Sold Out",
-            "Out of Stock"
+            ".payBlkBig",
+            "[itemprop='price']",
+            "span.payBlkBig",
+            ".pdp-final-price",
+            ".pdp-selling-price"
         ]
     },
     "shopclues": {

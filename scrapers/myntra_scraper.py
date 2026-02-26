@@ -29,16 +29,16 @@ class MyntraScraper(BaseScraper):
             ]
         }
     
-    def get_price_selectors(self) -> list:
-        return [
-            '.pdp-price',
-            '.pdp-discounted-price',
-            '.pdp-mrp',
-            '[class*="price"]'
-        ]
     
     async def extract_product_details(self, browser: BrowserAdapter) -> Dict:
         """Extract product details from Myntra"""
+        # SMART WAIT: Wait dynamically instead of sleeping blindly
+        try:
+            if browser.engine == 'playwright':
+                await browser.page.wait_for_selector('.pdp-name, .pdp-title', timeout=4000)
+        except:
+            pass
+            
         details = {
             'name': None,
             'image_url': None,
@@ -96,6 +96,13 @@ class MyntraScraper(BaseScraper):
 
     async def extract_price(self, browser: BrowserAdapter) -> Optional[str]:
         """Extract price from Myntra"""
+        # SMART WAIT: Wait dynamically for the price tag
+        try:
+            if browser.engine == 'playwright':
+                await browser.page.wait_for_selector('.pdp-price, .pdp-discounted-price', timeout=4000)
+        except:
+            pass
+            
         selectors = self.price_selectors
         
         for selector in selectors:
