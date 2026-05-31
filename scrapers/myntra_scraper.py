@@ -28,6 +28,18 @@ class MyntraScraper(BaseScraper):
                 '.pdp-notify-me'
             ]
         }
+
+    def get_price_selectors(self) -> list:
+        selectors = list(self.site_selectors.get('price_selectors', []))
+        for selector in [
+            '.pdp-price',
+            '.pdp-discounted-price',
+            '.pdp-mrp',
+            '[class*="price"]'
+        ]:
+            if selector not in selectors:
+                selectors.append(selector)
+        return selectors
     
     
     async def extract_product_details(self, browser: BrowserAdapter) -> Dict:

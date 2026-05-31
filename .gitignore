@@ -17,6 +17,8 @@ browser_data/
 !selectors.json
 !requirements.txt
 price_results.json
+product_prices.csv
+last_scraped_page.html
 
 # Environment variables
 .env

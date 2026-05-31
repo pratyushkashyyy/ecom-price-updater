@@ -33,10 +33,10 @@ class MeeshoScraper(BaseScraper):
         # SMART WAIT: Give Meesho's SPA time to render the price
         import asyncio
         await asyncio.sleep(3)
-        
+
         # Pull selectors dynamically from selectors.json
-        selectors = self.price_selectors 
-        
+        selectors = self.price_selectors
+
         # 1. Try specific selectors
         for selector in selectors:
             try:

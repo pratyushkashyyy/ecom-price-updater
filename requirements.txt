@@ -17,3 +17,6 @@ psycopg2-binary
 
 # Environment Variables
 python-dotenv==1.0.0
+
+# Process cleanup
+psutil

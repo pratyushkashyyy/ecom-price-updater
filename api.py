@@ -67,6 +67,21 @@ CHROME_CLEANUP_INTERVAL = int(os.getenv('CHROME_CLEANUP_INTERVAL', 300))  # Clea
 CHROME_CLEANUP_THRESHOLD = int(os.getenv('CHROME_CLEANUP_THRESHOLD', 50))  # Cleanup if more than 50 processes
 
 
+def default_stock_status():
+    return {'in_stock': True, 'stock_status': 'unknown', 'message': None}
+
+
+def get_result_stock_status(result: dict) -> dict:
+    stock = result.get('stock_status') or result.get('stock') or default_stock_status()
+    if isinstance(stock, str):
+        return {
+            'in_stock': stock != 'out_of_stock',
+            'stock_status': stock,
+            'message': None
+        }
+    return stock
+
+
 def run_async(coro):
     """Helper function to run async code in Flask with proper resource cleanup"""
     loop = None
@@ -172,7 +187,14 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                     playwright_semaphore.release()
             
             result = await scrape()
-            
+            stock_status = get_result_stock_status(result)
+
+            if stock_status.get('stock_status') == 'out_of_stock' or stock_status.get('in_stock') is False:
+                logger.info(f"📦 Product is out of stock on attempt {attempt + 1}")
+                result['attempts'] = attempt + 1
+                result['retried'] = attempt > 0
+                return result
+
             # Check if price was successfully extracted
             if result.get('price') and result['price'] != 'N/A' and result['price'] is not None:
                 logger.info(f"✅ Success on attempt {attempt + 1}: Price ₹{result['price']}")
@@ -212,7 +234,8 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                     'attempts': max_retries,
                     'retried': True,
                     'error': str(e),
-                    'stock_status': {'in_stock': True, 'stock_status': 'unknown', 'message': None}
+                    'stock': default_stock_status(),
+                    'stock_status': default_stock_status()
                 }
     
     # All retries exhausted
@@ -226,7 +249,8 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
         'attempts': max_retries,
         'retried': True,
         'error': last_error or 'Unknown error',
-        'stock_status': {'in_stock': True, 'stock_status': 'unknown', 'message': None}
+        'stock': default_stock_status(),
+        'stock_status': default_stock_status()
     }
 
 
@@ -327,7 +351,7 @@ def get_price():
             elapsed_time = time.time() - start_time
             
             # Format response
-            stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
+            stock_status = get_result_stock_status(result)
             
             if (result.get('price') and result['price'] != 'N/A' and result['price'] is not None) or \
                (result.get('name') and result['name'] != 'N/A' and result['name'] is not None):
@@ -515,7 +539,7 @@ def get_prices_batch():
                 else:
                     failed_count += 1
                 
-                stock_status = result.get('stock_status', {'in_stock': True, 'stock_status': 'unknown', 'message': None})
+                stock_status = get_result_stock_status(result)
                 
                 # Extract details safely for batch
                 details = result.get('details', {})

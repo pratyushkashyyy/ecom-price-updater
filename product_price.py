@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import threading
 import time
@@ -38,6 +39,90 @@ class EcommerceScraper:
     def identify_site(self, url: str) -> str:
         """Identify site from URL (wrapper for ScraperFactory)"""
         return ScraperFactory.identify_site(url)
+
+    def _default_stock_status(self) -> dict:
+        return {
+            'in_stock': True,
+            'stock_status': 'unknown',
+            'message': None
+        }
+
+    def _apply_stock_status(self, result: dict, stock: dict = None) -> None:
+        stock = stock or self._default_stock_status()
+        result['stock'] = stock
+        result['stock_status'] = stock
+
+    def _debug_html_enabled(self) -> bool:
+        return os.getenv('SAVE_SCRAPED_HTML', 'false').lower() == 'true' or \
+            os.getenv('DEBUG', 'false').lower() == 'true'
+
+    def _get_chromedriver_path(self) -> str:
+        configured = os.getenv('CHROMEDRIVER_PATH')
+        if configured:
+            if os.path.exists(configured):
+                self._ensure_executable(configured)
+                return configured
+            print(f"  CHROMEDRIVER_PATH does not exist, ignoring: {configured}")
+
+        cached = self._find_cached_chromedriver()
+        if cached:
+            return cached
+
+        driver_path = ChromeDriverManager().install()
+
+        if os.path.basename(driver_path) == 'chromedriver':
+            self._ensure_executable(driver_path)
+            return driver_path
+
+        driver_dir = os.path.dirname(driver_path)
+        for root, _, files in os.walk(driver_dir):
+            for filename in files:
+                if filename == 'chromedriver':
+                    candidate = os.path.join(root, filename)
+                    self._ensure_executable(candidate)
+                    return candidate
+        return driver_path
+
+    def _configure_chrome_binary(self, options: Options) -> None:
+        candidates = [
+            os.getenv('CHROME_BINARY'),
+            '/opt/google/chrome/chrome',
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+        ]
+
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                options.binary_location = candidate
+                return
+
+    def _find_cached_chromedriver(self) -> str:
+        cache_root = os.path.expanduser('~/.wdm/drivers/chromedriver')
+        if not os.path.isdir(cache_root):
+            return None
+
+        matches = []
+        for root, _, files in os.walk(cache_root):
+            for filename in files:
+                if filename == 'chromedriver':
+                    matches.append(os.path.join(root, filename))
+
+        if not matches:
+            return None
+
+        newest = max(matches, key=lambda path: os.path.getmtime(path))
+        self._ensure_executable(newest)
+        return newest
+
+    def _ensure_executable(self, path: str) -> None:
+        if os.access(path, os.X_OK):
+            return
+        try:
+            os.chmod(path, os.stat(path).st_mode | 0o111)
+        except Exception as e:
+            print(f"  Could not mark ChromeDriver executable: {e}")
         
     def resolve_url(self, url: str) -> str:
         """Resolve shortened URLs to their final destination"""
@@ -83,6 +168,7 @@ class EcommerceScraper:
             'url': url,
             'site': 'unknown',
             'price': 'N/A',
+            'success': False,
             'name': None,
             'image_url': None,
             'currency': 'INR',
@@ -95,11 +181,8 @@ class EcommerceScraper:
                 'rating': None,
                 'review_count': None
             },
-            'stock': {
-                'in_stock': True,
-                'stock_status': 'unknown',
-                'message': None
-            }
+            'stock': self._default_stock_status(),
+            'stock_status': self._default_stock_status()
         }
         
         # ── PHASE 1: Domain Dict Lookup ──
@@ -107,6 +190,7 @@ class EcommerceScraper:
         print(f"  Phase 1 identification: {site}")
         
         # ── PLAYWRIGHT ATTEMPT ──
+        browser = None
         try:
             # FAST-TRACK: Skip Playwright instantly for sites with heavy firewalls
             if site in ['myntra','nykaa']:
@@ -119,8 +203,7 @@ class EcommerceScraper:
                 args=['--disable-blink-features=AutomationControlled']
             )
             
-            # THE GOOGLEBOT VIP PASS
-            # Use Googlebot UA for strict firewalls, otherwise use normal random UA
+            # Bhavika's behavior: use Googlebot UA for strict firewalls, otherwise normal random UA.
             googlebot_ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
             current_ua = googlebot_ua if site in ['meesho', 'ajio','nykaa'] else self.get_random_user_agent()
             
@@ -177,14 +260,14 @@ class EcommerceScraper:
                 
                 # Flipkart-specific: Wait for price elements to load (they render via JS)
                 
-                # DEBUG: Save HTML to file
-                try:
-                    content = await page.content()
-                    with open("last_scraped_page.html", "w", encoding="utf-8") as f:
-                        f.write(content)
-                    print("  Saved page HTML to last_scraped_page.html")
-                except Exception as e:
-                    print(f"  Could not save HTML: {e}")
+                if self._debug_html_enabled():
+                    try:
+                        content = await page.content()
+                        with open("last_scraped_page.html", "w", encoding="utf-8") as f:
+                            f.write(content)
+                        print("  Saved page HTML to last_scraped_page.html")
+                    except Exception as e:
+                        print(f"  Could not save HTML: {e}")
 
                 # Extract data using the scraper via unified adapter
                 browser_adapter = BrowserAdapter(page, 'playwright')
@@ -194,22 +277,32 @@ class EcommerceScraper:
                 
                 if price or details.get('name'):
                     result['price'] = price if price else None
+                    result['success'] = bool(price)
                     result['status'] = 'success' if price else 'partial_success_no_price'
                     result['method'] = 'playwright'
                     result['details'] = details
                     result['name'] = details.get('name')
                     result['image_url'] = details.get('image_url')
-                    result['stock'] = stock
+                    self._apply_stock_status(result, stock)
                     await browser.close()
+                    browser = None
                     return result
             except Exception as e:
                 print(f"  Playwright navigation/extraction error: {e}")
             
-            await browser.close()
+            if browser:
+                await browser.close()
+                browser = None
             
         except Exception as e:
             print(f"  Playwright failed: {e}")
             result['error'] = str(e)
+        finally:
+            if browser:
+                try:
+                    await browser.close()
+                except Exception as e:
+                    print(f"  Could not close Playwright browser: {e}")
             
         # ── SELENIUM FALLBACK ──
         print(f"  Falling back to Selenium...")
@@ -218,6 +311,7 @@ class EcommerceScraper:
         for arg in SELENIUM_ARGS:
             options.add_argument(arg)
         options.add_argument(f"user-agent={self.get_random_user_agent()}")
+        self._configure_chrome_binary(options)
         
         # --- THE MAGIC STEALTH FLAG ---
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -229,13 +323,13 @@ class EcommerceScraper:
         driver = None
         try:
             driver = webdriver.Chrome(
-                service=ChromeService(ChromeDriverManager().install()),
+                service=ChromeService(self._get_chromedriver_path()),
                 options=options
             )
             
             driver.get(original_url)
             driver.implicitly_wait(3) # Wait up to 3 seconds for elements
-            time.sleep(1)  # Only sleep 1 second for standard redirects, not 10!
+            time.sleep(4 if site == 'myntra' else 1)
             
             final_url = driver.current_url
 
@@ -259,12 +353,13 @@ class EcommerceScraper:
             
             if price or details.get('name'):
                 result['price'] = price if price else None
+                result['success'] = bool(price)
                 result['status'] = 'success' if price else 'partial_success_no_price'
                 result['method'] = 'selenium'
                 result['details'] = details
                 result['name'] = details.get('name')
                 result['image_url'] = details.get('image_url')
-                result['stock'] = stock
+                self._apply_stock_status(result, stock)
             else:
                  result['status'] = 'failed_no_price'
         
@@ -289,8 +384,14 @@ class EcommerceScraper:
                 except Exception as e:
                     return {
                         'url': url,
+                        'site': self.identify_site(url),
+                        'price': None,
+                        'success': False,
                         'error': str(e),
-                        'status': 'error'
+                        'status': 'error',
+                        'method': 'unknown',
+                        'stock': self._default_stock_status(),
+                        'stock_status': self._default_stock_status()
                     }
 
         tasks = [scrape_bounded(url) for url in urls]

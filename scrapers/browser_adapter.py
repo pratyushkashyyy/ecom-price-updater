@@ -51,10 +51,20 @@ class BrowserAdapter:
     @property
     def backend_type(self) -> str:
         return self._type
+
+    @property
+    def engine(self) -> str:
+        """Compatibility alias used by some site scrapers."""
+        return self._type
     
     @property
     def raw(self):
         """Access the underlying Page or WebDriver"""
+        return self._backend
+
+    @property
+    def page(self):
+        """Compatibility alias for Playwright page access."""
         return self._backend
     
     # ── Element Queries ──

@@ -7,6 +7,10 @@ import csv
 import asyncio
 from pathlib import Path
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 # Database connection
@@ -14,12 +18,13 @@ DB_CONFIG = {
     'host': os.getenv('PGHOST', 'localhost'),
     'database': os.getenv('PGDATABASE', 'affiliate2'),
     'user': os.getenv('PGUSER', 'pk'),
-    'password': os.getenv('PGPASSWORD', 'Uncharted'),
+    'password': os.getenv('PGPASSWORD', ''),
     'port': int(os.getenv('PGPORT', '5432'))
 }
 
 # API URL for price scraping
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:6000')
+UPDATE_PRICE_URL = os.getenv('UPDATE_PRICE_URL')
 
 
 def get_product_urls():
@@ -38,9 +43,13 @@ def get_product_urls():
 
 async def update_product_price(id, price, client):
     """Update product price in products table by calling the API"""
+    if not UPDATE_PRICE_URL:
+        print("UPDATE_PRICE_URL is not configured; skipping remote price update")
+        return
+
     print(f"Updating product price for {id} with Price {price}")
     try:
-        response = await client.post('https://testing.appdeals.in/api/update-product-price', json={'product_id': id, 'price': price})
+        response = await client.post(UPDATE_PRICE_URL, json={'product_id': id, 'price': price})
         if response.status_code == 200:
             print(f"Successfully updated product price for {id}")
             print(response.json())
@@ -76,20 +85,17 @@ async def scraping_product_price(id, url, client, semaphore):
     """Scrape product price from URL (async) - returns tuple (price, stock_status)"""
     async with semaphore:  # Limit concurrent requests
         print(f"Scraping product price for {id} with URL {url}")
-        
-        # Retry logic for timeout errors
+
         max_retries = 2
         retry_delays = [5, 10]  # Wait 5s then 10s between retries
-        
+
         for attempt in range(max_retries + 1):
-        try:
-            # Expand short URLs (like amzn.to) before scraping
-            expanded_url = await expand_short_url(url, client)
-            
-            encoded_url = urllib.parse.quote(expanded_url, safe='')
+            try:
+                expanded_url = await expand_short_url(url, client)
+                encoded_url = urllib.parse.quote(expanded_url, safe='')
+
                 # Increase max_retries for sites that are known to be difficult to scrape
                 difficult_sites = ['meesho', 'ajio', 'myntra', 'nykaa']
-                # Simple site identification from URL
                 domain = urlparse(expanded_url).netloc.lower()
                 site = None
                 if 'meesho' in domain or 'msho.in' in domain:
@@ -100,121 +106,91 @@ async def scraping_product_price(id, url, client, semaphore):
                     site = 'myntra'
                 elif 'nykaa' in domain:
                     site = 'nykaa'
-                max_retries_param = 3 if site in difficult_sites else 2  # More retries for difficult sites
+
+                max_retries_param = 3 if site in difficult_sites else 2
                 api_url = f"{API_BASE_URL}/api/price?url={encoded_url}&max_retries={max_retries_param}"
-                # Increased timeout to 180 seconds as scraping can take 50+ seconds, some sites need more time
-                timeout_value = 180.0 if attempt == 0 else 240.0  # Longer timeout on retries
+                timeout_value = 180.0 if attempt == 0 else 240.0
                 response = await client.get(api_url, timeout=timeout_value)
-            
-            # API returns 200 for success and 404 for failed scrapes (but with JSON body)
-            # Handle both cases
-            if response.status_code in [200, 404]:
-                try:
-                    data = response.json()
-                except Exception as e:
-                    print(f"⚠️  Could not parse JSON response for ID {id}: {e}")
+
+                # API returns 200 for success and 404 for failed scrapes (but with JSON body).
+                if response.status_code in [200, 404]:
+                    try:
+                        data = response.json()
+                    except Exception as e:
+                        print(f"Could not parse JSON response for ID {id}: {e}")
                         return (None, None)
-                    
-                    # Extract stock status information
+
                     stock_status = data.get('stock_status', 'unknown')
                     in_stock = data.get('in_stock', True)
-                    
-                    # Check if product is out of stock
                     is_out_of_stock = stock_status == 'out_of_stock' or (stock_status == 'unknown' and not in_stock)
-                
-                # Check if scraping was successful
-                success = data.get('success', False)
-                price_str = data.get('price')
-                
-                    # If product is out of stock, save it with OUT_OF_STOCK marker
+
+                    success = data.get('success', False)
+                    price_str = data.get('price')
+
                     if is_out_of_stock:
                         stock_message = data.get('stock_message', 'Product is out of stock')
-                        print(f"📦 Product {id} is OUT OF STOCK: {stock_message}")
+                        print(f"Product {id} is OUT OF STOCK: {stock_message}")
                         return ('OUT_OF_STOCK', 'out_of_stock')
-                    
-                # Validate price exists and scraping was successful
-                if not success or not price_str:
-                    error_msg = data.get('error', data.get('status', 'Unknown error'))
-                        
-                        # For Flipkart: If price extraction failed, check if it's because product is out of stock
+
+                    if not success or not price_str:
+                        error_msg = data.get('error', data.get('status', 'Unknown error'))
+
                         if 'flipkart' in url.lower() or 'fkrt.cc' in url.lower():
-                            # Re-check stock status - price extraction failure might indicate out of stock
                             if stock_status == 'unknown' or stock_status is None:
-                                # If stock status is unknown and price extraction failed, it might be out of stock
-                                # Check the status message for clues
                                 status_msg = data.get('status', '').lower()
                                 if any(keyword in status_msg for keyword in ['out of stock', 'unavailable', 'notify', 'sold out']):
-                                    print(f"📦 Product {id} appears to be OUT OF STOCK (price extraction failed, status indicates out of stock)")
+                                    print(f"Product {id} appears to be OUT OF STOCK")
                                     return ('OUT_OF_STOCK', 'out_of_stock')
-                        
-                    print(f"⚠️  Scraping failed for ID {id} ({url[:60]}...): {error_msg}")
-                    if response.status_code == 404:
-                        print(f"   (API returned 404 - price not found after retries)")
+
+                        print(f"Scraping failed for ID {id} ({url[:60]}...): {error_msg}")
+                        if response.status_code == 404:
+                            print("   (API returned 404 - price not found after retries)")
                         return (None, stock_status)
-                
-                # Remove commas and convert to float first (handles decimals), then to int
-                price_clean = str(price_str).replace(',', '').strip()
-                try:
-                    price = int(float(price_clean))
-                    
-                    # Validation: Reject suspicious default prices
-                    # Amazon products rarely cost exactly 500, so this is likely a fallback
+
+                    price_clean = str(price_str).replace(',', '').strip()
+                    try:
+                        price = int(float(price_clean))
+                    except (ValueError, TypeError) as e:
+                        print(f"Error parsing price for ID {id}: {e}")
+                        return (None, stock_status)
+
                     if price == 500 and ('amzn.to' in url.lower() or 'amazon' in url.lower()):
-                        print(f"⚠️  Suspicious price 500 for Amazon URL {id} - likely scraping failure")
-                            return (None, stock_status)
-                    
-                    # Additional validation: Amazon prices should typically be >= 10 (minimum validation from scraper)
-                    if price < 10 and ('amzn.to' in url.lower() or 'amazon' in url.lower()):
-                        print(f"⚠️  Price {price} seems too low for Amazon product {id}")
-                        # Return None for very low prices, but allow it if it's a real small item
-                        # Minimum price threshold is 10
-                    
-                        # Validation for Hygulife: prices should be >= 50 (minimum validation from scraper)
-                        if price < 50 and ('bitli.in' in url.lower() or 'hygulife' in url.lower() or 'hyugalife' in url.lower()):
-                            print(f"⚠️  Price {price} seems too low for Hygulife product {id} - likely scraping failure")
-                            return (None, stock_status)
-                        
-                        return (price, stock_status)
-                except (ValueError, TypeError) as e:
-                    print(f"Error parsing price for ID {id}: {e}")
+                        print(f"Suspicious price 500 for Amazon URL {id} - likely scraping failure")
                         return (None, stock_status)
-            else:
-                error_body = ""
-                try:
-                    error_body = response.text[:200]
-                except:
-                    pass
-                print(f"⚠️  API returned status code: {response.status_code} for ID {id}")
+
+                    if price < 10 and ('amzn.to' in url.lower() or 'amazon' in url.lower()):
+                        print(f"Price {price} seems too low for Amazon product {id}")
+                        return (None, stock_status)
+
+                    if price < 50 and ('bitli.in' in url.lower() or 'hygulife' in url.lower() or 'hyugalife' in url.lower()):
+                        print(f"Price {price} seems too low for Hygulife product {id} - likely scraping failure")
+                        return (None, stock_status)
+
+                    return (price, stock_status)
+
+                error_body = response.text[:200] if response.text else ""
+                print(f"API returned status code: {response.status_code} for ID {id}")
                 print(f"   Response: {error_body}")
-                    return (None, None)
-                
-            except httpx.ReadTimeout as e:
-                if attempt < max_retries:
-                    wait_time = retry_delays[attempt]
-                    print(f"⏱️  ReadTimeout for ID {id} (attempt {attempt + 1}/{max_retries + 1}), retrying in {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    print(f"❌ ReadTimeout for ID {id} after {max_retries + 1} attempts - API request took too long")
-                    return (None, None)
-            except httpx.TimeoutException as e:
-                if attempt < max_retries:
-                    wait_time = retry_delays[attempt]
-                    print(f"⏱️  TimeoutException for ID {id} (attempt {attempt + 1}/{max_retries + 1}), retrying in {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    print(f"❌ TimeoutException for ID {id} after {max_retries + 1} attempts - API request timed out")
-                    return (None, None)
-        except Exception as e:
-            import traceback
-            error_msg = str(e) if str(e) else type(e).__name__
-                # Don't retry on non-timeout errors
-            print(f"❌ Error scraping {id} ({url[:60]}...): {error_msg}")
-            print(f"   Exception type: {type(e).__name__}")
-                if attempt == 0:  # Only print traceback on first attempt
-            traceback.print_exc()
                 return (None, None)
+
+            except (httpx.ReadTimeout, httpx.TimeoutException) as e:
+                if attempt < max_retries:
+                    wait_time = retry_delays[attempt]
+                    print(f"{type(e).__name__} for ID {id} (attempt {attempt + 1}/{max_retries + 1}), retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                print(f"{type(e).__name__} for ID {id} after {max_retries + 1} attempts")
+                return (None, None)
+            except Exception as e:
+                import traceback
+                error_msg = str(e) if str(e) else type(e).__name__
+                print(f"Error scraping {id} ({url[:60]}...): {error_msg}")
+                print(f"   Exception type: {type(e).__name__}")
+                if attempt == 0:
+                    traceback.print_exc()
+                return (None, None)
+
+        return (None, None)
 
 
 def get_last_processed_id(csv_file):
