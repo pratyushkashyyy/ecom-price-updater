@@ -1,0 +1,8 @@
+tunnel: 65716a97-9ac1-48ad-abf7-8224020222f5
+credentials-file: /home/pk/.cloudflared/ecom-price.json
+
+ingress:
+  - hostname: ecom-price.appdeals.in
+    service: http://localhost:9000
+
+  - service: http_status:404

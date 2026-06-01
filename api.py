@@ -353,8 +353,7 @@ def get_price():
             # Format response
             stock_status = get_result_stock_status(result)
             
-            if (result.get('price') and result['price'] != 'N/A' and result['price'] is not None) or \
-               (result.get('name') and result['name'] != 'N/A' and result['name'] is not None):
+            if result.get('price') and result['price'] != 'N/A' and result['price'] is not None:
                 logger.info(f"✅ Success: Price ₹{result['price']} fetched in {elapsed_time:.2f}s")
                 
                 # Extract details safely
@@ -387,7 +386,6 @@ def get_price():
                 return jsonify({
                     'success': False,
                     'url': result['url'],
-                    'price': None,
                     'site': result['site'],
                     'method': result.get('method', 'unknown'),
                     'status': result.get('status', 'Price not found'),

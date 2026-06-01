@@ -1,0 +1,14 @@
+[Unit]
+Description=cloudflared ecom price tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+TimeoutStartSec=15
+Type=notify
+ExecStart=/usr/bin/cloudflared --config /home/pk/.cloudflared/ecom-price.yml --no-autoupdate tunnel run ecom_price
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
