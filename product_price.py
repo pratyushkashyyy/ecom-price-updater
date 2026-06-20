@@ -168,6 +168,7 @@ class EcommerceScraper:
             'url': url,
             'site': 'unknown',
             'price': 'N/A',
+            'original_price': None,
             'success': False,
             'name': None,
             'image_url': None,
@@ -178,6 +179,7 @@ class EcommerceScraper:
             'details': {
                 'name': None,
                 'image_url': None,
+                'original_price': None,
                 'rating': None,
                 'review_count': None
             },
@@ -244,6 +246,13 @@ class EcommerceScraper:
                 
                 # Capture the browser's final URL after all redirects
                 final_url = page.url
+                target_url = ScraperFactory.unwrap_destination_url(final_url)
+                if target_url != final_url:
+                    print(f"  Embedded destination URL found: {target_url}")
+                    await page.goto(target_url, timeout=30000, wait_until='domcontentloaded')
+                    final_url = page.url
+                    print(f"  Browser navigated to embedded URL: {final_url}")
+
                 print(f"  Browser resolved URL to: {final_url}")
                 result['url'] = final_url
                 
@@ -272,14 +281,17 @@ class EcommerceScraper:
                 # Extract data using the scraper via unified adapter
                 browser_adapter = BrowserAdapter(page, 'playwright')
                 price = await scraper.extract_price(browser_adapter)
+                original_price = await scraper.extract_original_price(browser_adapter, price)
                 details = await scraper.extract_product_details(browser_adapter)
                 stock = await scraper.check_stock_status(browser_adapter)
                 
                 if price or details.get('name'):
                     result['price'] = price if price else None
+                    result['original_price'] = original_price
                     result['success'] = bool(price)
                     result['status'] = 'success' if price else 'partial_success_no_price'
                     result['method'] = 'playwright'
+                    details['original_price'] = original_price
                     result['details'] = details
                     result['name'] = details.get('name')
                     result['image_url'] = details.get('image_url')
@@ -332,6 +344,14 @@ class EcommerceScraper:
             time.sleep(4 if site == 'myntra' else 1)
             
             final_url = driver.current_url
+            target_url = ScraperFactory.unwrap_destination_url(final_url)
+            if target_url != final_url:
+                print(f"  Embedded destination URL found: {target_url}")
+                driver.get(target_url)
+                driver.implicitly_wait(3)
+                time.sleep(4 if self.identify_site(target_url) in ['myntra', 'nykaa'] else 1)
+                final_url = driver.current_url
+                print(f"  Selenium navigated to embedded URL: {final_url}")
 
             print(f"  Selenium resolved URL to: {final_url}")
             result['url'] = final_url
@@ -348,14 +368,17 @@ class EcommerceScraper:
             # Extract data via unified adapter
             browser_adapter = BrowserAdapter(driver, 'selenium')
             price = await scraper.extract_price(browser_adapter)
+            original_price = await scraper.extract_original_price(browser_adapter, price)
             details = await scraper.extract_product_details(browser_adapter)
             stock = await scraper.check_stock_status(browser_adapter)
             
             if price or details.get('name'):
                 result['price'] = price if price else None
+                result['original_price'] = original_price
                 result['success'] = bool(price)
                 result['status'] = 'success' if price else 'partial_success_no_price'
                 result['method'] = 'selenium'
+                details['original_price'] = original_price
                 result['details'] = details
                 result['name'] = details.get('name')
                 result['image_url'] = details.get('image_url')
@@ -386,6 +409,7 @@ class EcommerceScraper:
                         'url': url,
                         'site': self.identify_site(url),
                         'price': None,
+                        'original_price': None,
                         'success': False,
                         'error': str(e),
                         'status': 'error',

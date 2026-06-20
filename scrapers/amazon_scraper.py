@@ -36,6 +36,36 @@ class AmazonScraper(BaseScraper):
             ]
         }
 
+    def _first_valid_price_from_text(self, text: str) -> Optional[str]:
+        for candidate in self.extract_price_candidates_from_text(text):
+            if self.is_valid_price(candidate):
+                return candidate
+        return None
+
+    async def _price_from_element(self, browser: BrowserAdapter, element) -> Optional[str]:
+        text = await browser.get_inner_text(element)
+        price = self._first_valid_price_from_text(text)
+        if price:
+            return price
+
+        text = await browser.get_text(element)
+        price = self._first_valid_price_from_text(text)
+        if price:
+            return price
+
+        whole_el = await browser.evaluate_handle(element, "el => el.querySelector('.a-price-whole')")
+        whole = await browser.get_text(whole_el) if whole_el else ''
+        fraction_el = await browser.evaluate_handle(element, "el => el.querySelector('.a-price-fraction')")
+        fraction = await browser.get_text(fraction_el) if fraction_el else ''
+
+        if whole:
+            combined = f"{whole}.{fraction}" if fraction else whole
+            cleaned = self.clean_price(combined)
+            if self.is_valid_price(cleaned):
+                return cleaned
+
+        return None
+
     async def extract_product_details(self, browser: BrowserAdapter) -> Dict:
         """Extract product details from Amazon"""
         details = {
@@ -117,22 +147,62 @@ class AmazonScraper(BaseScraper):
         """Extract price from Amazon"""
         detail_sels = self.site_selectors.get('product_detail', {})
         price_sels = detail_sels.get('price', {})
-        
-        for key, sel in price_sels.items():
+
+        preferred_keys = [
+            'apex_accessibility_label',
+            'apex_price_to_pay',
+            'discounted_block',
+            'discounted_offscreen',
+            'discounted_whole',
+            'apex',
+            'desktop_unified',
+            'main',
+            'swatch_price'
+        ]
+
+        for key in preferred_keys:
+            sel = price_sels.get(key)
+            if not sel:
+                continue
             try:
                 elements = await browser.query_selector_all(sel)
                 for el in elements:
-                    text = await browser.get_inner_text(el)
-                    if text and text.strip():
-                        price_match = re.search(
-                            r'(INR|Rs\.?|₹|\$|€|£)\s?(\d{1,3}(,\d{2,3})*(\.\d{2})?)',
-                            text, re.IGNORECASE
-                        )
-                        if price_match:
-                            raw_price = price_match.group(2)
-                            cleaned = self.clean_price(raw_price)
-                            if self.is_valid_price(cleaned):
-                                return cleaned
+                    price = await self._price_from_element(browser, el)
+                    if price:
+                        return price
             except Exception:
                 continue
+
+        for key, sel in price_sels.items():
+            if key in preferred_keys or key in {'whole', 'fraction'}:
+                continue
+            try:
+                elements = await browser.query_selector_all(sel)
+                for el in elements:
+                    price = await self._price_from_element(browser, el)
+                    if price:
+                        return price
+            except Exception:
+                continue
+        return None
+
+    async def extract_original_price(
+        self,
+        browser: BrowserAdapter,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract Amazon MRP/original price from basis-price structures."""
+        for selector in self.get_original_price_selectors():
+            try:
+                elements = await browser.query_selector_all(selector)
+                selector_candidates = []
+                for element in elements[:10]:
+                    text = await browser.get_inner_text(element) or await browser.get_text(element)
+                    selector_candidates.extend(self.extract_price_candidates_from_text(text))
+                original_price = self.pick_original_price(selector_candidates, current_price)
+                if original_price:
+                    return original_price
+            except Exception:
+                continue
+
         return None

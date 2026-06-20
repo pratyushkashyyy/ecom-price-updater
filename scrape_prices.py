@@ -63,6 +63,7 @@ def print_result(result: dict, index: int = None):
     prefix = f"{index}. " if index is not None else ""
     site = result.get('site', 'UNKNOWN').upper()
     price = result.get('price', 'N/A')
+    original_price = result.get('original_price')
     method = result.get('method', 'unknown')
     status = result.get('status', '')
     
@@ -73,6 +74,8 @@ def print_result(result: dict, index: int = None):
     print(f"\n{prefix}{site}")
     print(f"   URL: {url_display}")
     print(f"   Price: ₹{price}" if price != 'N/A' else "   Price: N/A")
+    if original_price:
+        print(f"   Original Price: ₹{original_price}")
     print(f"   Method: {method}")
     if status:
         print(f"   Status: {status}")
@@ -193,5 +196,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
 

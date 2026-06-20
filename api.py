@@ -229,6 +229,7 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
                     'url': product_url,
                     'site': scraper.identify_site(product_url),
                     'price': None,
+                    'original_price': None,
                     'status': f'Failed after {max_retries} attempts: {str(e)}',
                     'method': 'unknown',
                     'attempts': max_retries,
@@ -244,6 +245,7 @@ async def scrape_with_retries(product_url: str, max_retries: int = MAX_RETRIES,
         'url': product_url,
         'site': scraper.identify_site(product_url),
         'price': None,
+        'original_price': None,
         'status': f'Failed after {max_retries} attempts. Last error: {last_error}',
         'method': 'unknown',
         'attempts': max_retries,
@@ -360,11 +362,13 @@ def get_price():
                 details = result.get('details', {})
                 name = result.get('name') or details.get('name')
                 image_url = result.get('image_url') or details.get('image_url')
+                original_price = result.get('original_price') or details.get('original_price')
 
                 response_data = {
                     'success': True,
                     'url': result['url'],
                     'price': result['price'],
+                    'original_price': original_price,
                     'name': name,
                     'image_url': image_url,
                     'site': result['site'],
@@ -386,6 +390,8 @@ def get_price():
                 return jsonify({
                     'success': False,
                     'url': result['url'],
+                    'price': None,
+                    'original_price': result.get('original_price'),
                     'site': result['site'],
                     'method': result.get('method', 'unknown'),
                     'status': result.get('status', 'Price not found'),
@@ -522,6 +528,7 @@ def get_prices_batch():
                     'success': False,
                     'url': valid_urls[i] if i < len(valid_urls) else 'unknown',
                     'price': None,
+                    'original_price': None,
                     'site': 'unknown',
                     'method': 'unknown',
                     'status': f'Exception: {str(result)}',
@@ -543,11 +550,13 @@ def get_prices_batch():
                 details = result.get('details', {})
                 name = result.get('name') or details.get('name')
                 image_url = result.get('image_url') or details.get('image_url')
+                original_price = result.get('original_price') or details.get('original_price')
                 
                 formatted_result = {
                     'success': success,
                     'url': result.get('url', valid_urls[i] if i < len(valid_urls) else 'unknown'),
                     'price': result.get('price') if result.get('price') != 'N/A' else None,
+                    'original_price': original_price,
                     'name': name,
                     'image_url': image_url,
                     'site': result.get('site', 'unknown'),

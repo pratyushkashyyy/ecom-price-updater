@@ -48,6 +48,27 @@ class BaseScraper(ABC):
     def get_price_selectors(self) -> List[str]:
         """Return list of price selectors for this site"""
         return self.site_selectors.get('price_selectors', [])
+
+    def get_original_price_selectors(self) -> List[str]:
+        """Return list of original/list price selectors for this site"""
+        configured = self.site_selectors.get('original_price_selectors', [])
+        generic = [
+            'del',
+            's',
+            'strike',
+            '[style*="line-through"]',
+            '[class*="mrp"]',
+            '[class*="MRP"]',
+            '[class*="original"]',
+            '[class*="Original"]',
+            '[class*="regular"]',
+            '[class*="Regular"]',
+            '[class*="list-price"]',
+            '[class*="ListPrice"]',
+            '[class*="base-price"]',
+            '[class*="BasePrice"]',
+        ]
+        return configured + [selector for selector in generic if selector not in configured]
         
     def get_stock_indicators(self) -> Dict:
         """Return stock status indicators"""
@@ -63,7 +84,7 @@ class BaseScraper(ABC):
         if cleaned.count('.') > 1:
             parts = cleaned.split('.')
             cleaned = "".join(parts[:-1]) + "." + parts[-1]
-        return cleaned.strip()
+        return cleaned.strip().strip(',.')
 
     def is_valid_price(self, price_str: str) -> bool:
         """Check if cleaned price string is valid"""
@@ -74,6 +95,101 @@ class BaseScraper(ABC):
             return True
         except ValueError:
             return False
+
+    def price_to_float(self, price_str: str) -> Optional[float]:
+        """Convert a cleaned price string to float if possible."""
+        if not self.is_valid_price(price_str):
+            return None
+        try:
+            return float(price_str.replace(',', ''))
+        except (TypeError, ValueError):
+            return None
+
+    def extract_price_candidates_from_text(self, text: str) -> List[str]:
+        """Extract individual price-like values from text."""
+        if not text:
+            return []
+
+        candidates = []
+        patterns = [
+            r'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)',
+            r'([\d,]+(?:\.\d{1,2})?)\s*(?:₹|Rs\.?|INR)',
+        ]
+
+        for pattern in patterns:
+            for match in re.findall(pattern, text, flags=re.IGNORECASE):
+                cleaned = self.clean_price(match)
+                if self.is_valid_price(cleaned):
+                    candidates.append(cleaned)
+
+        if not candidates:
+            cleaned = self.clean_price(text)
+            if self.is_valid_price(cleaned):
+                candidates.append(cleaned)
+
+        return candidates
+
+    def pick_original_price(self, candidates: List[str], current_price: Optional[str] = None) -> Optional[str]:
+        """Choose the most likely original/list price from candidate values."""
+        current_value = self.price_to_float(current_price) if current_price else None
+        unique = []
+        seen = set()
+
+        for candidate in candidates:
+            value = self.price_to_float(candidate)
+            if value is None:
+                continue
+            key = round(value, 2)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append((value, candidate))
+
+        if not unique:
+            return None
+
+        if current_value is not None:
+            higher = [(value, candidate) for value, candidate in unique if value > current_value]
+            if higher:
+                higher.sort(key=lambda item: item[0])
+                return higher[0][1]
+            return None
+
+        unique.sort(key=lambda item: item[0], reverse=True)
+        return unique[0][1]
+
+    def extract_original_price_candidates_from_content(self, content: str) -> List[str]:
+        """Extract original/list price candidates from full page HTML/JSON text."""
+        if not content:
+            return []
+
+        candidates = []
+        label = (
+            r'MRP|M\.R\.P\.?|List Price|Original Price|Regular Price|'
+            r'Maximum Retail Price|Retail Price|Was|Compare(?: At)? Price'
+        )
+        patterns = [
+            rf'(?:{label})[^₹\d]{{0,120}}(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{{1,2}})?)',
+            rf'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{{1,2}})?)[^<]{{0,120}}(?:{label})',
+            (
+                r'"(?:mrp|MRP|maximumRetailPrice|retailPrice|originalPrice|'
+                r'strikeOffPrice|listPrice|regularPrice|compareAtPrice)"\s*:\s*"?'
+                r'(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)'
+            ),
+            (
+                r"'(?:mrp|MRP|maximumRetailPrice|retailPrice|originalPrice|"
+                r"strikeOffPrice|listPrice|regularPrice|compareAtPrice)'\s*:\s*'?"
+                r"(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)"
+            ),
+        ]
+
+        for pattern in patterns:
+            for match in re.findall(pattern, content, flags=re.IGNORECASE):
+                cleaned = self.clean_price(match)
+                if self.is_valid_price(cleaned):
+                    candidates.append(cleaned)
+
+        return candidates
 
     def clean_image_url(self, url: str) -> str:
         """Clean image URL to get the highest resolution version."""
@@ -109,6 +225,33 @@ class BaseScraper(ABC):
             except:
                 continue
         return None
+
+    async def extract_original_price(
+        self,
+        browser: BrowserAdapter,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract original/list price using selector hints and generic fallbacks."""
+        candidates = []
+        for selector in self.get_original_price_selectors():
+            try:
+                elements = await browser.query_selector_all(selector)
+                for element in elements[:10]:
+                    text = await browser.get_text(element)
+                    candidates.extend(self.extract_price_candidates_from_text(text))
+                    for attr in ('aria-label', 'title', 'data-price', 'content'):
+                        attr_value = await browser.get_attribute(element, attr)
+                        candidates.extend(self.extract_price_candidates_from_text(attr_value))
+            except:
+                continue
+
+        try:
+            content = await browser.get_page_content()
+            candidates.extend(self.extract_original_price_candidates_from_content(content))
+        except:
+            pass
+
+        return self.pick_original_price(candidates, current_price)
 
     async def extract_product_details(self, browser: BrowserAdapter) -> Dict:
         """Extract product details (name, image, rating) using unified browser adapter"""

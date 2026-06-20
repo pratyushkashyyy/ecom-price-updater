@@ -34,6 +34,8 @@
         "product_detail": {
             "title": "#productTitle",
             "price": {
+                "apex_accessibility_label": "#apex-pricetopay-accessibility-label",
+                "apex_price_to_pay": ".priceToPay.apex-pricetopay-value",
                 "discounted_block": ".priceToPay",
                 "discounted_whole": ".priceToPay .a-price-whole",
                 "discounted_offscreen": ".priceToPay .a-offscreen",
@@ -66,10 +68,27 @@
             "Out of stock",
             "Temporarily out of stock",
             "We don't know when or if this item will be back in stock"
+        ],
+        "original_price_selectors": [
+            "#corePriceDisplay_desktop_feature_div .aok-relative > .aok-offscreen",
+            "#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .apex-basisprice-value .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .apex-basisprice-value",
+            "#corePriceDisplay_desktop_feature_div .a-price.a-text-price .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .a-text-price .a-offscreen",
+            "#corePrice_feature_div .aok-relative > .aok-offscreen",
+            "#corePrice_feature_div .basisPrice .a-offscreen",
+            "#corePrice_feature_div .apex-basisprice-value .a-offscreen",
+            "#corePrice_feature_div .apex-basisprice-value",
+            "#corePrice_feature_div .a-text-price .a-offscreen",
+            "#listPrice",
+            "#price .a-text-strike"
         ]
     },
     "flipkart": {
         "price_selectors": [
+            ".v1zwn21l",
+            "[class*='v1zwn21l']",
             ".v1zwn21j",
             "._1psv1zeb9",
             ".hl05eU",
@@ -104,6 +123,19 @@
         "out_of_stock": [
             "Sold Out",
             "Currently Unavailable"
+        ],
+        "original_price_selectors": [
+            ".v1zwn21m",
+            "[class*='v1zwn21m']",
+            "[style*='text-decoration-line:line-through']",
+            "[style*='line-through']",
+            "._3I9_wc",
+            "._25b18c ._3I9_wc",
+            ".yRaY8j",
+            "[class*='strike']",
+            "[class*='mrp']",
+            "del",
+            "s"
         ]
     },
    "myntra": {
@@ -129,6 +161,13 @@
             "Out of Stock",
             "Sold Out",
             "Currently unavailable"
+        ],
+        "original_price_selectors": [
+            ".pdp-mrp s",
+            ".pdp-mrp",
+            "[class*='pdp-mrp']",
+            "del",
+            "s"
         ]
     },
     "meesho": {
@@ -138,6 +177,14 @@
             "[class*='ProductPrice']",
             ".pdp-price",
             "[data-price]"
+        ],
+        "original_price_selectors": [
+            "[class*='OriginalPrice']",
+            "[class*='StrikedPrice']",
+            "[class*='original']",
+            "[class*='strike']",
+            "del",
+            "s"
         ]
     },
     "nykaa": {
@@ -154,6 +201,14 @@
         "out_of_stock": [
             "Sold Out",
             "Out of Stock"
+        ],
+        "original_price_selectors": [
+            ".css-u05rr",
+            "[class*='css-u05rr']",
+            "[class*='mrp']",
+            "[class*='original']",
+            "del",
+            "s"
         ]
     },
     "ajio": {
@@ -163,6 +218,15 @@
             "span[class*='prod-sp']",
             ".prod-base-price",
             "[data-id='price']"
+        ],
+        "original_price_selectors": [
+            ".prod-cp",
+            ".prod-price .prod-cp",
+            ".prod-base-price",
+            "[class*='base-price']",
+            "[class*='mrp']",
+            "del",
+            "s"
         ]
     },
     "snapdeal": {
@@ -172,6 +236,15 @@
             "span.payBlkBig",
             ".pdp-final-price",
             ".pdp-selling-price"
+        ],
+        "original_price_selectors": [
+            ".pdpCutPrice",
+            ".pdp-cut-price",
+            ".pdpPrice .pdpCutPrice",
+            "[class*='cut']",
+            "[class*='mrp']",
+            "del",
+            "s"
         ]
     },
     "shopclues": {
@@ -184,9 +257,20 @@
         "out_of_stock": [
             "Sold Out",
             "Out of Stock"
+        ],
+        "original_price_selectors": [
+            "#sec_list_price_",
+            ".o_price1",
+            ".old_price",
+            ".o_price",
+            ".m_price",
+            "[class*='old']",
+            "[class*='mrp']",
+            "del",
+            "s"
         ]
     },
-    "hyugalife": {
+    "hygulife": {
         "price_selectors": [
             ".special-price-container"
         ],
@@ -196,6 +280,20 @@
         "out_of_stock": [
             "Sold Out",
             "Out of Stock"
+        ],
+        "original_price_selectors": [
+            ".regular-price",
+            ".compare-at-price",
+            ".mrp",
+            ".original-price",
+            "del .woocommerce-Price-amount",
+            "s .woocommerce-Price-amount",
+            "[class*='mrp']",
+            "[class*='MRP']",
+            "[class*='regular']",
+            "[class*='Regular']",
+            "del",
+            "s"
         ]
     }
 }

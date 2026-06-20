@@ -51,6 +51,7 @@ curl "http://localhost:5000/api/price?url=https://www.amazon.in/product-url&max_
   "success": true,
   "url": "https://www.amazon.in/product-url",
   "price": "50000",
+  "original_price": "55000",
   "site": "amazon",
   "method": "selenium",
   "status": "success",
@@ -66,6 +67,7 @@ curl "http://localhost:5000/api/price?url=https://www.amazon.in/product-url&max_
   "success": false,
   "url": "https://www.amazon.in/product-url",
   "price": null,
+  "original_price": null,
   "site": "amazon",
   "method": "selenium",
   "status": "Failed after 5 attempts. Last error: Price not found",
@@ -106,6 +108,7 @@ curl -X POST http://localhost:5000/api/price/batch \
       "success": true,
       "url": "https://www.amazon.in/product1",
       "price": "50000",
+      "original_price": "55000",
       "site": "amazon",
       "method": "selenium",
       "status": "success",
@@ -116,6 +119,7 @@ curl -X POST http://localhost:5000/api/price/batch \
       "success": true,
       "url": "https://www.flipkart.com/product2",
       "price": "289",
+      "original_price": "399",
       "site": "flipkart",
       "method": "selenium",
       "status": "success",
@@ -246,4 +250,3 @@ python scrape_prices.py --virtual-display "https://www.amazon.in/product-url"
 - CORS is enabled for cross-origin requests
 - All requests include attempt count and elapsed time
 - Failed requests include detailed error messages
-

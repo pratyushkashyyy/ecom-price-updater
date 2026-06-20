@@ -1,6 +1,7 @@
 """
 Snapdeal scraper
 """
+import asyncio
 from typing import Dict, Optional
 from .base_scraper import BaseScraper
 from .browser_adapter import BrowserAdapter
@@ -40,14 +41,18 @@ class SnapdealScraper(BaseScraper):
         except:
             pass
             
-        import asyncio
         await asyncio.sleep(2) 
 
         # DEAD LINK PROTECTION: Stop immediately if Snapdeal shows a 404/Not Found page
         try:
             page_content = await browser.get_page_content()
             content_lower = page_content.lower()
-            if "page not found" in content_lower or "404" in content_lower or "we couldn't find the page" in content_lower:
+            if (
+                "page not found" in content_lower or
+                "we couldn't find the page" in content_lower or
+                "<title>404" in content_lower or
+                "snapdeal.com/404" in content_lower
+            ):
                  print("  ⚠️ SNAPDEAL 404 DETECTED - Dead Link!")
                  return None
         except:
@@ -57,16 +62,19 @@ class SnapdealScraper(BaseScraper):
         selectors = self.price_selectors
         for selector in selectors:
             try:
-                el = await browser.query_selector(selector)
-                if el:
-                    price_text = await browser.get_text(el)
-                    cleaned_price = self.clean_price(price_text)
-                    if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
-                        try:
-                            if float(cleaned_price.replace(',', '')) >= 50:
-                                return cleaned_price
-                        except:
-                            pass
+                elements = await browser.query_selector_all(selector)
+                candidates = []
+                for element in elements[:5]:
+                    price_text = await browser.get_text(element)
+                    candidates.extend(self.extract_price_candidates_from_text(price_text))
+
+                    for attr in ('value', 'aria-label', 'title', 'data-price', 'content'):
+                        attr_value = await browser.get_attribute(element, attr)
+                        candidates.extend(self.extract_price_candidates_from_text(attr_value))
+
+                price = self._pick_current_price(candidates)
+                if price:
+                    return price
             except:
                 continue
                 
@@ -82,4 +90,50 @@ class SnapdealScraper(BaseScraper):
         except:
             pass
         
+        return None
+
+    def _pick_current_price(self, candidates: list) -> Optional[str]:
+        """Choose the likely selling price from selector-level Snapdeal candidates."""
+        valid = []
+        seen = set()
+        for candidate in candidates:
+            value = self.price_to_float(candidate)
+            if value is None or value < 50:
+                continue
+            key = round(value, 2)
+            if key in seen:
+                continue
+            seen.add(key)
+            valid.append((value, candidate))
+
+        if not valid:
+            return None
+
+        valid.sort(key=lambda item: item[0])
+        return valid[0][1]
+
+    async def extract_original_price(
+        self,
+        browser: BrowserAdapter,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract Snapdeal MRP from explicit cut-price/MRP selectors only."""
+        for selector in self.get_original_price_selectors():
+            candidates = []
+            try:
+                elements = await browser.query_selector_all(selector)
+                for element in elements[:10]:
+                    text = await browser.get_text(element)
+                    candidates.extend(self.extract_price_candidates_from_text(text))
+
+                    for attr in ('value', 'aria-label', 'title', 'data-price', 'content'):
+                        attr_value = await browser.get_attribute(element, attr)
+                        candidates.extend(self.extract_price_candidates_from_text(attr_value))
+            except Exception:
+                continue
+
+            original_price = self.pick_original_price(candidates, current_price)
+            if original_price:
+                return original_price
+
         return None

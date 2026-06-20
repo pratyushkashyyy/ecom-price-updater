@@ -134,3 +134,31 @@ class MyntraScraper(BaseScraper):
                 continue
         
         return None
+
+    async def extract_original_price(
+        self,
+        browser: BrowserAdapter,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract Myntra MRP from explicit PDP MRP/strikethrough selectors."""
+        for selector in self.get_original_price_selectors():
+            candidates = []
+            try:
+                elements = await browser.query_selector_all(selector)
+                for element in elements[:10]:
+                    text = await browser.get_text(element)
+                    candidates.extend(self.extract_price_candidates_from_text(text))
+
+                    for attr in ('aria-label', 'title', 'data-price', 'content'):
+                        attr_value = await browser.get_attribute(element, attr)
+                        candidates.extend(
+                            self.extract_price_candidates_from_text(attr_value)
+                        )
+            except Exception:
+                continue
+
+            original_price = self.pick_original_price(candidates, current_price)
+            if original_price:
+                return original_price
+
+        return None

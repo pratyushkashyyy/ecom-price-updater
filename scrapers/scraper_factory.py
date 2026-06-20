@@ -3,7 +3,7 @@ Factory class to get the appropriate scraper for a given URL
 """
 import json
 import os
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from .amazon_scraper import AmazonScraper
 from .flipkart_scraper import FlipkartScraper
 from .myntra_scraper import MyntraScraper
@@ -69,6 +69,7 @@ class ScraperFactory:
     @staticmethod
     def identify_site(url: str) -> str:
         """Identify the e-commerce site from URL"""
+        url = ScraperFactory.unwrap_destination_url(url)
         domain = urlparse(url).netloc.lower()
         
         # Handle short URLs and redirect domains
@@ -98,3 +99,22 @@ class ScraperFactory:
             return 'generic'  # Short-link domain, needs browser resolution
         else:
             return 'generic'
+
+    @staticmethod
+    def unwrap_destination_url(url: str) -> str:
+        """Unwrap affiliate redirect URLs that carry the real product URL in a query param."""
+        if not url:
+            return url
+
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        for key in ('dl', 'url', 'u', 'redirect', 'target'):
+            values = params.get(key)
+            if not values:
+                continue
+
+            destination = unquote(values[0])
+            if destination.startswith(('http://', 'https://')):
+                return destination
+
+        return url

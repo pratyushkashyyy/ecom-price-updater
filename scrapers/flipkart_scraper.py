@@ -6,6 +6,8 @@ from typing import Dict, Optional
 from .base_scraper import BaseScraper
 from .browser_adapter import BrowserAdapter
 import asyncio
+import html
+import json
 
 class FlipkartScraper(BaseScraper):
     """Scraper for Flipkart.com and Shopsy.in"""
@@ -58,7 +60,6 @@ class FlipkartScraper(BaseScraper):
 
         # PRIORITY 1: Try JSON-LD extraction (most reliable)
         try:
-            import json
             # Get all script tags with type="application/ld+json"
             scripts = await browser.query_selector_all('script[type="application/ld+json"]')
             
@@ -90,12 +91,21 @@ class FlipkartScraper(BaseScraper):
         except Exception as e:
             print(f"  JSON-LD extraction failed: {e}")
 
+        # Selenium can see the page source even when script elements have no visible text.
+        try:
+            price = self._extract_price_from_jsonld_content(page_content)
+            if price:
+                print(f"  ✅ Found price via JSON-LD page source: {price}")
+                return price
+        except Exception as e:
+            print(f"  JSON-LD page-source extraction failed: {e}")
+
         # PRIORITY 2: CSS selectors fallback
         print("  Falling back to CSS selectors...")
         selectors = self.price_selectors
         
-        found_prices = []
         for selector in selectors:
+            selector_prices = []
             try:
                 if 'css-' in selector:
                     sel = f'.{selector}' if not selector.startswith('.') and not selector.startswith('[') else selector
@@ -106,24 +116,29 @@ class FlipkartScraper(BaseScraper):
                 
                 for el in elements[:5]:
                     price_text = await browser.get_text(el)
-                    cleaned_price = self.clean_price(price_text)
-                    if cleaned_price != "N/A" and self.is_valid_price(cleaned_price):
+                    for cleaned_price in self._extract_visible_current_price_candidates(price_text):
                         try:
                             price_float = float(cleaned_price.replace(',', ''))
                             if 10 <= price_float <= 10000000:
-                                found_prices.append((price_float, cleaned_price))
+                                selector_prices.append((price_float, cleaned_price))
                         except:
                             continue
             except:
                 continue
-        
-        # Return highest price (main product price)
-        if found_prices:
-            found_prices.sort(key=lambda x: x[0], reverse=True)
-            print(f"  ✅ Found price via CSS selector: {found_prices[0][1]}")
-            return found_prices[0][1]
+
+            if selector_prices:
+                selector_prices.sort(key=lambda x: x[0])
+                print(f"  ✅ Found price via CSS selector: {selector_prices[0][1]}")
+                return selector_prices[0][1]
         
         return None
+
+    def _extract_visible_current_price_candidates(self, text: str) -> list:
+        """Extract CSS price candidates only from text that looks like displayed currency."""
+        if not text or not re.search(r'(₹|Rs\.?|INR)', text, flags=re.IGNORECASE):
+            return []
+
+        return self.extract_price_candidates_from_text(text)
     
     def _extract_price_from_jsonld(self, data: dict) -> Optional[str]:
         """Extract price from JSON-LD structured data"""
@@ -161,6 +176,109 @@ class FlipkartScraper(BaseScraper):
             print(f"  Error extracting from JSON-LD: {e}")
         
         return None
+
+    def _extract_price_from_jsonld_content(self, content: str) -> Optional[str]:
+        """Extract JSON-LD price directly from page source."""
+        if not content:
+            return None
+
+        scripts = re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            content,
+            flags=re.IGNORECASE | re.DOTALL
+        )
+
+        for script_content in scripts:
+            try:
+                data = json.loads(html.unescape(script_content.strip()))
+            except json.JSONDecodeError:
+                continue
+
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                price = self._extract_price_from_jsonld(item)
+                if price:
+                    return price
+
+        return None
+
+    async def extract_original_price(
+        self,
+        browser: BrowserAdapter,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract Flipkart/Shopsy MRP from product price elements only."""
+        for selector in self.get_original_price_selectors():
+            candidates = []
+            try:
+                elements = await browser.query_selector_all(selector)
+                for element in elements[:10]:
+                    text = await browser.get_text(element)
+                    candidates.extend(self.extract_price_candidates_from_text(text))
+
+                    for attr in ('aria-label', 'title', 'data-price', 'content'):
+                        attr_value = await browser.get_attribute(element, attr)
+                        candidates.extend(
+                            self.extract_price_candidates_from_text(attr_value)
+                        )
+            except Exception:
+                continue
+
+            original_price = self.pick_original_price(candidates, current_price)
+            if original_price:
+                print(f"  ✅ Found original price via Flipkart selector: {original_price}")
+                return original_price
+
+        try:
+            content = await browser.get_page_content()
+            original_price = self._extract_original_price_from_flipkart_content(
+                content,
+                current_price
+            )
+            if original_price:
+                print(f"  ✅ Found original price via Flipkart page source: {original_price}")
+                return original_price
+        except Exception:
+            pass
+
+        return None
+
+    def _extract_original_price_from_flipkart_content(
+        self,
+        content: str,
+        current_price: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract main product MRP from Flipkart's product-pricing payload."""
+        if not content:
+            return None
+
+        candidates = []
+        unescaped = html.unescape(content)
+        patterns = [
+            r'"ppd"\s*:\s*\{[^{}]{0,1000}?"mrp"\s*:\s*"?([\d,]+(?:\.\d{1,2})?)',
+            r'"mrp"\s*:\s*"?([\d,]+(?:\.\d{1,2})?)"?[^{}]{0,1000}?"(?:fsp|finalPrice)"',
+            r'"text"\s*:\s*"₹\s*([\d,]+(?:\.\d{1,2})?)"[^{}]{0,300}?"text"\s*:\s*"MRP',
+            r'"text"\s*:\s*"MRP[^{}]{0,300}?"text"\s*:\s*"₹\s*([\d,]+(?:\.\d{1,2})?)"',
+        ]
+
+        for pattern in patterns:
+            for match in re.findall(pattern, unescaped, flags=re.IGNORECASE | re.DOTALL):
+                cleaned = self.clean_price(match)
+                if self.is_valid_price(cleaned):
+                    candidates.append(cleaned)
+
+        current_value = self.price_to_float(current_price) if current_price else None
+        if current_value:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if (
+                    self.price_to_float(candidate) is not None and
+                    self.price_to_float(candidate) <= current_value * 8
+                )
+            ]
+
+        return self.pick_original_price(candidates, current_price)
     
     async def extract_product_details(self, browser: BrowserAdapter) -> Dict:
         """Extract product details from Flipkart using multiple strategies.
